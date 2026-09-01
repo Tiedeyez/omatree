@@ -3,8 +3,8 @@ import Quickshell
 import Quickshell.Wayland
 import qs.Commons
 
-// The "desktop snapshot": a live copy of the Omatree living in the lower-right
-// corner of the desktop as a quiet background ornament. It sits on the front-most
+// The "desktop snapshot": the Omatree itself, set out to live in the lower-right
+// corner of the desktop as a quiet ornament rather than kept in the bar. It sits on the front-most
 // layer so it remains fully visible, and is click-through except a small tap
 // around the tree that summons the main Omatree panel. State stays single-source
 // in Service.qml — this window just re-renders the same treeSpec, so it never
@@ -294,10 +294,11 @@ PanelWindow {
     }
   }
 
-  // ---- "back to its housing" tab -------------------------------------
+  // ---- "take me home" tab ---------------------------------------------
   // Fades in along the top of the bed while the ornament (or the tab) is
-  // hovered. Click → the tree returns to the bar (desktopEnabled = false),
-  // same as switching "SET ON DESKTOP" off in the panel.
+  // hovered. It is the tree asking, in its own voice, to be brought back in —
+  // clicking it returns it to the bar (desktopEnabled = false), the same as
+  // switching "SET ME OUT" off in the panel.
   readonly property bool _tabShown:
     root.showTree && !root._airborne && (tapMa.containsMouse || returnMa.containsMouse)
   Item {
@@ -319,7 +320,7 @@ PanelWindow {
     Text {
       id: returnLabel
       anchors.centerIn: parent
-      text: "◂ HOUSING"
+      text: "◂ TAKE ME HOME"
       color: Qt.alpha(Color.accent, returnMa.containsMouse ? 1 : 0.8)
       font.family: "monospace"
       font.pixelSize: 10

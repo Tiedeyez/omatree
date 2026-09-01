@@ -910,7 +910,7 @@ Panel {
                 spacing: Style.space(7)
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
-                  text: "SET ON DESKTOP"
+                  text: "SET ME OUT"
                   color: (desktopToggle.on || desktopToggle.lit)
                     ? root.accent : Qt.alpha(root.fg, 0.55)
                   font.family: root.uiFont
