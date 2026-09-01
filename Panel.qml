@@ -1079,7 +1079,17 @@ Panel {
     if (kind === "water") { svc.waterNow(); root.flashNote("watered"); bonsaiView.water() }
     else if (kind === "lamp") {
       svc.lampOn = !svc.lampOn
-      root.flashNote(svc.lampOn ? "lamp on" : "lamp off")
+      if (svc.lampOn) {
+        // What the gesture actually is, in daylight, is opening the tree to
+        // the sun — the light comes in from wherever the sun really is right
+        // now. After dark the same beams run cold and quiet: some light still
+        // reaches it, that is all.
+        bonsaiView.light()
+        root.flashNote(svc.daylight ? "the sun's rays are let in"
+                                    : "a little light, kept for me")
+      } else {
+        root.flashNote(svc.daylight ? "back into the shade" : "left to the dark")
+      }
     }
     else if (kind === "feed") { svc.feedNow(); root.flashNote("fed"); bonsaiView.feed() }
     else if (kind === "prune") { svc.pruneNow(); root.flashNote("pruned") }

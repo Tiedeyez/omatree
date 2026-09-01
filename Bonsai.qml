@@ -120,6 +120,15 @@ Item {
 
   // ---- time of day ---------------------------------------------------
   property var sun: Paint.sunForTime(12, 0)
+  // Where the light is coming from, in screen space, derived the same way the
+  // shaders derive it (Paint: x right, y DOWN, z toward the viewer). The sun's
+  // position comes from the machine's own clock and timezone — nothing is
+  // fetched, and nothing needs to be.
+  readonly property real lightX: root.sun && root.sun.dir ? root.sun.dir[0] : 0.2
+  readonly property real lightY: root.sun && root.sun.dir ? -root.sun.dir[1] : -0.9
+  // Rays TRAVEL the other way: away from the light, across the tree.
+  readonly property real rayAngle: Math.atan2(-root.lightY, -root.lightX)
+  readonly property bool sunUp: !(root.sun && root.sun.night)
   function refreshSun() {
     var dc = root.tree && root.tree.devClock !== undefined ? root.tree.devClock : -1
     var h, mi
@@ -368,6 +377,9 @@ Item {
     Item {
       id: fx
       anchors.fill: parent
+      // The beams are longer than the view so they can cross it completely;
+      // clipping keeps them on the tree instead of raking over the readouts.
+      clip: true
       function water() {
         for (var i = 0; i < dropPool.count; i++) {
           var d = dropPool.itemAt(i)
@@ -381,6 +393,119 @@ Item {
         }
       }
       function milestone() { washAnim.restart() }
+
+      // Light let in. Not a lamp being switched on and not a drawn sun — the
+      // light itself: shafts raking across the tree from wherever the sun
+      // actually is right now, with dust glittering as it drifts down the
+      // beam. After dark the same thing runs colder and quieter, because the
+      // gesture is still "some light reaches you", just less of it.
+      function light() {
+        var ang = root.rayAngle
+        var dx = Math.cos(ang), dy = Math.sin(ang)
+        var px = -dy, py = dx                  // across the beam
+        var span = Math.max(fx.width, fx.height) * 1.35
+        for (var b = 0; b < shaftPool.count; b++) {
+          var sh = shaftPool.itemAt(b)
+          if (!sh) continue
+          var off = (b / (shaftPool.count - 1) - 0.5) * fx.width * 1.15
+          sh.fire(fx.width / 2 + px * off - dx * span * 0.30,
+                  fx.height / 2 + py * off - dy * span * 0.30,
+                  dx * span * 0.60, dy * span * 0.60, ang, b * 55)
+        }
+        for (var i = 0; i < motePool.count; i++) {
+          var m = motePool.itemAt(i)
+          if (!m || m.live) continue
+          var t = Math.random() - 0.5
+          m.fire(fx.width / 2 + px * t * fx.width * 1.2 - dx * span * 0.42,
+                 fx.height / 2 + py * t * fx.height * 1.2 - dy * span * 0.42,
+                 dx * span * 0.9, dy * span * 0.9, Math.random() * 420)
+        }
+      }
+
+      // the beams: a few long, thin, low-opacity bars raked to the sun angle
+      Repeater {
+        id: shaftPool
+        model: 7
+        Rectangle {
+          id: shaft
+          required property int index
+          property bool live: false
+          readonly property color warm: root.sunUp ? "#ffe9b0" : "#cfe2ff"
+          width: Math.max(fx.width, fx.height) * 1.6
+          height: 2 + (shaft.index % 3) * 2
+          visible: live; opacity: 0
+          color: shaft.warm
+          antialiasing: false
+          transformOrigin: Item.Center
+          function fire(px, py, tx, ty, ang, delay) {
+            live = true
+            x = px - width / 2; y = py - height / 2
+            rotation = ang * 180 / Math.PI
+            shaftHold.duration = delay
+            shaft._tx = x + tx; shaft._ty = y + ty
+            shaftAnim.restart()
+          }
+          property real _tx: 0
+          property real _ty: 0
+          SequentialAnimation {
+            id: shaftAnim
+            PauseAnimation { id: shaftHold; duration: 0 }
+            ParallelAnimation {
+              NumberAnimation { target: shaft; property: "x"; to: shaft._tx; duration: 1150; easing.type: Easing.InOutSine }
+              NumberAnimation { target: shaft; property: "y"; to: shaft._ty; duration: 1150; easing.type: Easing.InOutSine }
+              SequentialAnimation {
+                NumberAnimation { target: shaft; property: "opacity"; from: 0; to: root.sunUp ? 0.40 : 0.20; duration: 380; easing.type: Easing.OutQuad }
+                NumberAnimation { target: shaft; property: "opacity"; to: 0; duration: 640; easing.type: Easing.InQuad }
+              }
+            }
+            ScriptAction { script: shaft.live = false }
+          }
+        }
+      }
+
+      // the glitter: motes carried down the beam, twinkling as they go
+      Repeater {
+        id: motePool
+        model: 30
+        Rectangle {
+          id: mote
+          required property int index
+          property bool live: false
+          property real _tx: 0
+          property real _ty: 0
+          width: 1 + (mote.index % 3); height: width
+          visible: live; opacity: 0
+          color: root.sunUp ? "#fff3c9" : "#dbe8ff"
+          antialiasing: false
+          function fire(px, py, tx, ty, delay) {
+            live = true
+            x = px; y = py
+            mote._tx = px + tx + (Math.random() - 0.5) * 14
+            mote._ty = py + ty + (Math.random() - 0.5) * 14
+            moteHold.duration = delay
+            moteAnim.restart()
+          }
+          SequentialAnimation {
+            id: moteAnim
+            PauseAnimation { id: moteHold; duration: 0 }
+            ParallelAnimation {
+              NumberAnimation { target: mote; property: "x"; to: mote._tx; duration: 1500; easing.type: Easing.InOutSine }
+              NumberAnimation { target: mote; property: "y"; to: mote._ty; duration: 1500; easing.type: Easing.InOutSine }
+              SequentialAnimation {
+                NumberAnimation { target: mote; property: "opacity"; from: 0; to: root.sunUp ? 0.95 : 0.6; duration: 240 }
+                // the twinkle: it catches and loses the light on the way down
+                SequentialAnimation {
+                  loops: 3
+                  NumberAnimation { target: mote; property: "opacity"; to: root.sunUp ? 0.28 : 0.18; duration: 170 }
+                  NumberAnimation { target: mote; property: "opacity"; to: root.sunUp ? 0.95 : 0.6; duration: 170 }
+                }
+                NumberAnimation { target: mote; property: "opacity"; to: 0; duration: 240 }
+              }
+            }
+            ScriptAction { script: mote.live = false }
+          }
+        }
+      }
 
       Repeater {
         id: dropPool
@@ -593,4 +718,5 @@ Item {
   function water() { fx.water() }
   function feed() { fx.feed() }
   function milestone() { fx.milestone() }
+  function light() { fx.light() }
 }
