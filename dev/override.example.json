@@ -1,0 +1,10 @@
+{
+  "maturity": 1,
+  "age": 150,
+  "yaw": 0.9,
+  "clock": "18:30",
+  "water": 20,
+  "light": 10,
+  "soil": 15,
+  "upkeep": 8
+}

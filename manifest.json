@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "jimmie.bonsai",
+  "name": "Omatree",
+  "version": "0.2.0",
+  "author": "Tiedeyez",
+  "license": "MIT",
+  "description": "Omatree \u2014 a living bonsai in a glass house on your bar, grown from a seed unique to this machine. Plant it from seed or from a cutting, water and feed it, and prune it by hand into your own shape. It ages with your system and you. No two are ever alike.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omatree",
+    "description": "Your companion bonsai, living in the bar. Click to open its glass house.",
+    "category": "Fun",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

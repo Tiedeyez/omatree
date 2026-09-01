@@ -1,0 +1,7 @@
+# dev-local render override (already ignored in dev/, keep here too)
+dev/override.json
+
+# editor / OS noise
+*.bak.*
+*.swp
+.DS_Store
