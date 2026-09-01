@@ -36,6 +36,24 @@ var MAX_DEPTH    = { formal: 4, informal: 5, slant: 4, cascade: 5,
 var CHILD_LEN    = 0.68     // child branch length as fraction of parent
 var LEN_MATURE   = 0.6      // branch lengths scale (0.6 .. 1.0) with maturity
 var PHOTOTROPISM = 0.16     // per-level blend of branch dir back toward world-up
+// Pipe model (da Vinci's rule): the cross-section area of a limb equals the
+// summed area of what grows out of it. Wood is conserved through every fork,
+// so a limb visibly loses girth where a child leaves and children are never
+// thicker than the stub they sprang from — that continuity is most of what
+// makes a drawn tree read as one grown object instead of assembled parts.
+var PIPE_LEAK    = 0.94     // a little area lost to bark/heartwood at each fork
+var BOUGH_SHARE  = 0.22     // fraction of trunk area a single main bough takes
+var LIMB_TAPER   = 0.28     // girth a limb loses along its OWN length
+var COLLAR       = 1.24     // branch-collar swelling where a limb leaves its parent
+var SAG_C        = 0.30     // cantilever droop coefficient (see sagAt)
+
+// Beam deflection: a limb bends under its own weight as roughly L^3 / r^4, and
+// carries more the further out you go. Normalised and clamped so an old, long,
+// thin branch sags convincingly without folding in half.
+function sagAt(length, radius, frac, load) {
+  var slender = length / Math.max(0.6, radius * 4)
+  return Math.min(0.9, SAG_C * Math.pow(slender, 1.35) * frac * frac * load)
+}
 var CLUMP_R_BASE = 2.4
 var CLUMP_R_GROW = 4.6
 var NODE_CAP     = 820
@@ -101,8 +119,29 @@ function grow(gen, state) {
   var dryLoad = Math.max(0, (38 - humidity) / 38) + Math.max(0, (heat - 28) / 28) * 0.35
 
   var ageScalar = 1 + AGE_GAIN * (1 - Math.exp(-ageYears / AGE_TAU))
+  // The pot's half-width. Grow owns it (not Paint) because the surface roots
+  // have to stay inside the rim — a root that reaches past the terracotta
+  // floats in mid-air once the box turns. Paint reads it back off `sk.potR`.
+  var potR = potRadiusFor(style, m, ageScalar)
   var girth = Math.pow(ageScalar, 0.62)              // trunk thickens faster than it lengthens
   var ringCount = 1 + Math.floor(Math.min(1200, ageYears) / 3)
+
+  // Where the main boughs leave the trunk has to be known BEFORE the trunk is
+  // drawn: the trunk sheds girth at each of those heights (pipe model), which
+  // is what keeps a bough from looking screwed onto a parallel-sided pole.
+  var boughStart = style === "broom" ? 0.58 : style === "literati" ? 0.78
+    : style === "cascade" ? 0.35 : 0.52
+  var boughCount = (gen && gen.model && gen.model.boughs) || 3
+  var boughTs = []
+  for (var bt = 0; bt < boughCount; bt++)
+    boughTs.push(boughStart + (0.98 - boughStart) * (boughCount === 1 ? 0.5 : bt / (boughCount - 1)))
+  // area still running up the trunk above height t
+  function trunkPipe(t) {
+    var area = 1
+    for (var q = 0; q < boughTs.length; q++)
+      if (t > boughTs[q]) area *= (1 - BOUGH_SHARE)
+    return Math.sqrt(area)
+  }
 
   var depth = 2 + Math.round(m * (MAX_DEPTH[style] || 6))
   var lenGrow = LEN_MATURE + (1 - LEN_MATURE) * m
@@ -188,7 +227,9 @@ function grow(gen, state) {
     // and tuck the BURIED foot back in — otherwise a big old trunk paints a
     // giant hidden disc that spills out past the pot.
     var buriedTuck = y < 0 ? clamp((y + TRUNK_BURY) / TRUNK_BURY + 0.3, 0.32, 1) : 1
-    var r = trunkR * (1 - 0.62 * t) * flare * buriedTuck
+    // The trunk's own slow taper is gentle now — most of the narrowing comes
+    // from the wood that leaves at each bough.
+    var r = trunkR * (1 - 0.46 * t) * trunkPipe(t) * flare * buriedTuck
     trunkPts.push({ p: p, r: r })
   }
   for (var s = 0; s < trunkPts.length; s++) {
@@ -206,16 +247,34 @@ function grow(gen, state) {
     var rootRng = rngFor(seed, "roots")
     var nRoots = 3 + Math.floor(rootRng() * 3)          // 3..5
     var footX = trunkPts[0].p[0], footZ = trunkPts[0].p[2]
-    var rootR = Math.min(trunkR, 6)                     // a surface detail; don't let age balloon it
+    // The girth the buttresses are carved out of is the trunk's own flare at
+    // the soil line — a root is the flare continuing, not a stick leaning on
+    // it, so it starts inside the trunk's silhouette and at the flare's radius.
+    var flareR = 0
+    for (var fp = 0; fp < trunkPts.length; fp++)
+      if (trunkPts[fp].p[1] >= 0.2 && trunkPts[fp].p[1] <= 3.0)
+        flareR = Math.max(flareR, trunkPts[fp].r)
+    if (flareR <= 0) flareR = trunkR
+    var rootR = Math.min(flareR * 0.30, 4.6)
     for (var ri = 0; ri < nRoots; ri++) {
       var ra0 = (ri / nRoots) * TAU + rootRng() * 0.8
-      var rlen = rootR * (1.3 + rootRng() * 1.1)
-      // start a touch up the flared foot, splay out, stay at/above the soil
-      // line so a root never pokes out over the pot rim
-      var rs = [footX, 1.6 + rootRng() * 1.4, footZ]
-      var re = [footX + Math.cos(ra0) * rlen, 0.4 + rootRng() * 0.8,
-                footZ + Math.sin(ra0) * rlen]
-      seg("root" + ri, rs, re, rootR * 0.62, rootR * 0.16, 0, "root")
+      // splay, but never past the soil surface: the rim is the hard stop
+      var rlen = Math.min(flareR * (1.1 + rootRng() * 1.0), potR * 0.50)
+      var rdx = Math.cos(ra0), rdz = Math.sin(ra0)
+      // Three segments along a curve that leaves the trunk almost vertically,
+      // rolls over the shoulder of the flare and dives into the soil: the
+      // shape a buttress root actually makes, and it keeps the join tangent to
+      // the trunk instead of cutting across it.
+      var yTop = 1.5 + rootRng() * 0.9
+      var arc = [
+        [footX, yTop, footZ],
+        [footX + rdx * rlen * 0.34, yTop * 0.62, footZ + rdz * rlen * 0.34],
+        [footX + rdx * rlen * 0.74, 0.75 + rootRng() * 0.5, footZ + rdz * rlen * 0.74],
+        [footX + rdx * rlen, 0.15 + rootRng() * 0.35, footZ + rdz * rlen]
+      ]
+      var rads = [rootR, rootR * 0.74, rootR * 0.42, rootR * 0.16]
+      for (var rk = 0; rk < 3; rk++)
+        seg("root" + ri, arc[rk], arc[rk + 1], rads[rk], rads[rk + 1], 0, "root")
     }
   }
 
@@ -251,20 +310,31 @@ function grow(gen, state) {
     var subs = level < 2 ? 3 : 2
     var cur = base.slice()
     var d = norm(dir)
+    // How much this limb has to carry: its own wood, plus foliage that is
+    // heavier when it is fruiting and lighter when the tree is starved.
+    var load = (0.7 + 0.5 * foliage) * (fruit ? 1.25 : 1) * (0.75 + 0.35 * health)
     for (var k = 0; k < subs; k++) {
+      var frac = (k + 0.5) / subs
       // reach toward the light, add a little gnarl
       d = norm(lerp3(d, [0, 1, 0], PHOTOTROPISM * (level + 0.5)))
       d = norm(add(d, scl(windDir, windLoad * (0.55 + level * 0.12))))
+      // then let gravity win it back: a cantilever bends more the further out
+      // and the thinner it gets, so limb tips curve over instead of shooting
+      // out straight
+      d = norm(add(d, [0, -sagAt(length, radius, frac, load), 0]))
       var jitter = [(rnd() - 0.5) * 0.5, (rnd() - 0.5) * 0.35, (rnd() - 0.5) * 0.5]
       d = norm(add(d, scl(jitter, 0.35 / (level + 1))))
       var next = add(cur, scl(d, length / subs))
-      var ra = radius * (1 - k / subs * 0.6)
-      var rb = radius * (1 - (k + 1) / subs * 0.6)
+      // the branch collar: a short swelling right where it leaves its parent,
+      // then a gentle taper of its own — the sharp narrowing happens at forks
+      var ra = radius * (1 - k / subs * LIMB_TAPER) * (k === 0 ? COLLAR : 1)
+      var rb = radius * (1 - (k + 1) / subs * LIMB_TAPER)
       seg(id, cur, next, Math.max(0.55, ra), Math.max(0.5, rb), level,
         level >= depth - 1 ? "twig" : "branch")
       cur = next
     }
     var end = cur
+    var endR = radius * (1 - LIMB_TAPER)      // the girth actually available to children
 
     var terminal = level >= depth || radius * taper < 0.4
     if (terminal) {
@@ -287,6 +357,10 @@ function grow(gen, state) {
       : (rnd() < (0.32 + vigor * 0.3 + m * 0.16) ? 2 : 1)
     if (rnd() < 0.14 && level > 0) kids += 1
     var fr = frame(d)
+    // Split the stub's cross-section between the children rather than handing
+    // each a fixed fraction of the parent — that is what stopped children from
+    // being born fatter than the twig they grow out of.
+    var kidR = endR * Math.pow(1 / kids, 0.5) * PIPE_LEAK * (0.72 + 0.45 * taper)
     for (var c = 0; c < kids; c++) {
       var cid = id + "." + c
       if (clamp(prune[cid] || 0, 0, 1) >= 0.98) continue
@@ -299,13 +373,11 @@ function grow(gen, state) {
       cd = norm(add(cd, [0, -droop * 0.4 + PHOTOTROPISM, 0]))
       if (upright && cd[1] < -0.25) { cd[1] = -0.25; cd = norm(cd) }
       var cl = length * (CHILD_LEN + kr() * 0.18) * lenGrow
-      branch(cid, end, cd, cl, radius * taper, level + 1, childIdx * 3 + c + 1)
+      branch(cid, end, cd, cl, kidR, level + 1, childIdx * 3 + c + 1)
     }
   }
 
   // spawn the main boughs off the upper trunk
-  var boughStart = style === "broom" ? 0.58 : style === "literati" ? 0.78
-    : style === "cascade" ? 0.35 : 0.52
   var boughs = g.boughs || 3
   var brnd = rngFor(seed, "boughs")
   for (var b = 0; b < boughs; b++) {
@@ -323,7 +395,9 @@ function grow(gen, state) {
     // upright styles: a bough never dives back down through the trunk
     if (upright && bd[1] < -0.1) { bd[1] = -0.1; bd = norm(bd) }
     var blen = Math.min(trunkH * 0.6, trunkH * 0.45 * (0.8 + brnd() * 0.5)) * lenGrow
-    branch(bid, tp.p, bd, blen, tp.r * 0.82, 1, b + 1)
+    // exactly the wood the trunk gave up at this height, so nothing appears
+    // from nowhere and nothing is left dangling
+    branch(bid, tp.p, bd, blen, tp.r * Math.sqrt(BOUGH_SHARE) * PIPE_LEAK, 1, b + 1)
   }
   // broom & literati crown: a burst of branches right at the top
   if (style === "broom" || style === "literati") {
@@ -334,7 +408,9 @@ function grow(gen, state) {
       var qr = rngFor(seed, qid)
       var qa = (q / cn) * TAU + qr() * 0.5
       var qd = norm([Math.cos(qa) * 0.9, 0.7, Math.sin(qa) * 0.9])
-      branch(qid, trunkTop, qd, trunkH * 0.42 * lenGrow, trunkR * 0.3, 1, q + 1)
+      var tipR = trunkPts[trunkPts.length - 1].r
+      branch(qid, trunkTop, qd, trunkH * 0.42 * lenGrow,
+        tipR * Math.pow(1 / cn, 0.5) * PIPE_LEAK, 1, q + 1)
     }
   }
 
@@ -349,10 +425,19 @@ function grow(gen, state) {
       genus: (gen && gen.genus) || "juniper",
       ageScalar: ageScalar, ringCount: ringCount,
       needle: (gen && gen.genus) === "pine" || (gen && gen.genus) === "juniper",
-      maturity: m,
+      maturity: m, potR: potR,
+      thirst: thirst, health: health,
       fruit: fruit
     }
   }
+}
+
+// Half-width of the pot the tree is planted in. Deep/upright styles get a
+// narrower, taller box; everything else a broad training pot. Kept here so
+// Grow and Paint can never disagree about where the rim is.
+function potRadiusFor(style, m, ageScalar) {
+  var narrow = style === "cascade" || style === "literati"
+  return (narrow ? 6.4 : 10.2) * (0.72 + 0.28 * m) * Math.pow(ageScalar, 0.32)
 }
 
 // sample the trunk polyline at fraction t (0 base .. 1 top)

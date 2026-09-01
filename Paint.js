@@ -74,9 +74,10 @@ function measure(sk, V0) {
   }
   for (var j = 0; j < sk.clumps.length; j++)
     acc(sk.clumps[j].c, (sk.clumps[j].r + 1) * V.art)
-  // include the pot footprint
+  // include the pot footprint — SAUCER_DROP down, since the dish sits below
+  // the pot's own floor and would otherwise be cropped off the bottom edge
   var potR = potRadius(sk)
-  acc([-potR, potBottomY(sk), 0], V.art)
+  acc([-potR, potBottomY(sk) - SAUCER_DROP, 0], V.art)
   acc([potR, 0, 0], V.art)
   if (minX > maxX) { minX = -20; maxX = 20; minY = -40; maxY = 4 }
   return {
@@ -128,7 +129,7 @@ function measureStable(sk, V0) {
   }
   var cp = Math.cos(pitch)
   var topY = (sk.bounds.max[1] + padTop) * cp
-  var botY = Math.min(sk.bounds.min[1], potBottomY(sk)) * cp
+  var botY = Math.min(sk.bounds.min[1], potBottomY(sk) - SAUCER_DROP) * cp
   var w = Math.ceil(reach * 2 * art) + 4
   var h = Math.ceil((topY - botY) * art) + 6
   // nudge the trunk off-centre toward the lighter side so a leaning canopy
@@ -140,14 +141,27 @@ function measureStable(sk, V0) {
 }
 
 function potRadius(sk) {
-  var deep = sk.style === "cascade"
-  var m = sk.maturity
-  return (deep ? 8 : sk.style === "literati" ? 8 : 13) * (0.72 + 0.28 * m) * Math.pow(sk.ageScalar, 0.32)
+  // Grow owns the rim (it clamps the surface roots to it); this is only a
+  // fallback for skeletons built before `potR` existed.
+  if (sk.potR > 0) return sk.potR
+  var narrow = sk.style === "cascade" || sk.style === "literati"
+  return (narrow ? 6.4 : 10.2) * (0.72 + 0.28 * sk.maturity) * Math.pow(sk.ageScalar, 0.32)
 }
+// The four walls of a box built from an 8-corner ring (top 0..3, floor 4..7),
+// each with its outward normal. Shared by the pot and its saucer.
+var BOX_SIDES = [
+  { i: [0, 1, 5, 4], n: [0, 0, -1] }, { i: [1, 2, 6, 5], n: [1, 0, 0] },
+  { i: [2, 3, 7, 6], n: [0, 0, 1] }, { i: [3, 0, 4, 7], n: [-1, 0, 0] }
+]
+function sideDefsFor(f) { return BOX_SIDES[f] }
+
+// how far the saucer's floor hangs below the pot's own bottom
+var SAUCER_DROP = 2.2
+
 function potBottomY(sk) {
   var deep = sk.style === "cascade"
   // always deeper than the buried trunk foot so it's never left poking out
-  return -((deep ? 22 : 16) + 2 * sk.maturity) * Math.pow(sk.ageScalar, 0.28) - 2
+  return -((deep ? 18 : 12.5) + 2 * sk.maturity) * Math.pow(sk.ageScalar, 0.28) - 2
 }
 
 // ---- glass case (the desktop "vitrine") --------------------------------
@@ -356,48 +370,68 @@ function build(sk, V) {
     var side = clamp(rx2 * lx * 0.5 + 0.5, 0, 1)
     return potAmb + (1 - potAmb) * (0.62 + 0.23 * toward + 0.15 * side) * (night ? 0.5 : sun.intensity)
   }
-  // A shallow saucer gives the pot a physical footprint; the smaller water
-  // surface sits inside it and catches a quiet blue-green highlight.
-  var plateR = potR * 1.12
-  var plateY = pBotY - 0.08
-  var plateCorners = [
-    project([-plateR, plateY, -plateR], V),
-    project([plateR, plateY, -plateR], V),
-    project([plateR, plateY, plateR], V),
-    project([-plateR, plateY, plateR], V)
+  // A shallow saucer gives the pot a physical footprint. It has to be a real
+  // (if squat) box like the pot, not a flat quad — a horizontal plate at this
+  // pitch is almost entirely hidden behind the pot and its rotating corners
+  // poke out as stray wedges. Built from the same terracotta so the two read
+  // as one piece of pottery.
+  var sTopR = potR * 0.98, sBotR = potR * 0.90
+  var sTopY = pBotY + 0.5, sBotY = pBotY - SAUCER_DROP + 0.5
+  var SN = [
+    [-sTopR, sTopY, -sTopR], [sTopR, sTopY, -sTopR], [sTopR, sTopY, sTopR], [-sTopR, sTopY, sTopR],
+    [-sBotR, sBotY, -sBotR], [sBotR, sBotY, -sBotR], [sBotR, sBotY, sBotR], [-sBotR, sBotY, sBotR]
   ]
-  var waterR = plateR * 0.70
-  var waterY = plateY + 0.03
-  var waterCorners = [
-    project([-waterR, waterY, -waterR], V),
-    project([waterR, waterY, -waterR], V),
-    project([waterR, waterY, waterR], V),
-    project([-waterR, waterY, waterR], V)
-  ]
-  var plateOp = {
+  var SP = []
+  for (var si = 0; si < 8; si++) SP.push(project(SN[si], V))
+  var saucerOps = []
+  for (var sf = 0; sf < 4; sf++) {
+    var sdd = sideDefsFor(sf)
+    var slm = faceLum(sdd.n[0], sdd.n[2]) * 0.88     // a touch in the pot's shadow
+    saucerOps.push({
+      op: "roundedPoly", mat: "pot",
+      pts: [[SP[sdd.i[0]].x, SP[sdd.i[0]].y], [SP[sdd.i[1]].x, SP[sdd.i[1]].y],
+            [SP[sdd.i[2]].x, SP[sdd.i[2]].y], [SP[sdd.i[3]].x, SP[sdd.i[3]].y]],
+      fill: shade(pal.pot, slm, night, gold),
+      edge: shade(pal.pot, slm * 0.86, night, gold), salt: salt + 17,
+      z: (SP[sdd.i[0]].z + SP[sdd.i[1]].z + SP[sdd.i[2]].z + SP[sdd.i[3]].z) / 4
+    })
+  }
+  saucerOps.sort(function (p, q) { return p.z - q.z })
+  // the saucer's dish, seen as a ring around the pot foot under this pitch
+  var dishLum = faceLum(0, 0) * 0.94
+  var dishOp = {
     op: "roundedPoly", mat: "pot",
-    pts: plateCorners.map(function (p) { return [p.x, p.y] }),
-    base: { r: 0.68, g: 0.27, b: 0.14 }, night: night, gold: gold, ambient: 0.52,
-    lx: lx, ly: ly, intensity: night ? 0.55 : sun.intensity,
-    fill: shade({ r: 0.68, g: 0.27, b: 0.14 }, 0.68, night, gold),
-    edge: shade({ r: 0.68, g: 0.27, b: 0.14 }, 0.46, night, gold),
-    salt: salt + 71, z: plateCorners[0].z - 2
+    pts: [[SP[0].x, SP[0].y], [SP[1].x, SP[1].y], [SP[2].x, SP[2].y], [SP[3].x, SP[3].y]],
+    fill: shade(pal.pot, dishLum * 0.9, night, gold),
+    edge: shade(pal.pot, dishLum * 0.74, night, gold), salt: salt + 29,
+    z: (SP[0].z + SP[1].z + SP[2].z + SP[3].z) / 4
   }
-  var waterOp = {
-    op: "roundedPoly", mat: "water",
-    pts: waterCorners.map(function (p) { return [p.x, p.y] }),
-    base: { r: 0.20, g: 0.38, b: 0.42 }, night: night, gold: gold,
-    ambient: 0.68, lx: lx, ly: ly, intensity: night ? 0.5 : sun.intensity,
-    fill: [43, 91, 101], edge: [27, 60, 67],
-    salt: salt + 83, z: waterCorners[0].z - 1
+  // Standing water in the dish, but only right after a drink — a permanent
+  // puddle would read as neglect, and a dry saucer is what a thirsty tree looks
+  // like. Fades out as the soil dries.
+  var wet = clamp(1 - (sk.thirst || 0) / 0.42, 0, 1)
+  var waterOps = []
+  if (wet > 0.02) {
+    var wR = sTopR * 0.86, wY = sTopY - 0.12
+    var wC = [project([-wR, wY, -wR], V), project([wR, wY, -wR], V),
+              project([wR, wY, wR], V), project([-wR, wY, wR], V)]
+    var wetTone = {
+      r: pal.pot.r * (1 - 0.55 * wet) + 0.10 * wet,
+      g: pal.pot.g * (1 - 0.42 * wet) + 0.16 * wet,
+      b: pal.pot.b * (1 - 0.20 * wet) + 0.24 * wet
+    }
+    waterOps.push({
+      op: "roundedPoly", mat: "pot",
+      pts: wC.map(function (p) { return [p.x, p.y] }),
+      fill: shade(wetTone, dishLum * (0.86 + 0.2 * wet), night, gold),
+      edge: shade(wetTone, dishLum * 0.7, night, gold), salt: salt + 83,
+      z: (wC[0].z + wC[1].z + wC[2].z + wC[3].z) / 4
+    })
   }
+
   var potSideOps = []
-  var sideDefs = [
-    { i: [0, 1, 5, 4], n: [0, 0, -1] }, { i: [1, 2, 6, 5], n: [1, 0, 0] },
-    { i: [2, 3, 7, 6], n: [0, 0, 1] }, { i: [3, 0, 4, 7], n: [-1, 0, 0] }
-  ]
   for (var f = 0; f < 4; f++) {
-    var sd = sideDefs[f]
+    var sd = sideDefsFor(f)
     var lm = faceLum(sd.n[0], sd.n[2])
     var faceOp = {
       op: "roundedPoly",
@@ -454,22 +488,27 @@ function build(sk, V) {
            [CP[2].x, CP[2].y], [CP[3].x, CP[3].y]]
   }
   var mossOps = []
-  for (var mPatch = 0; mPatch < 5; mPatch++) {
-    var mossAng = (mPatch / 5) * TAU + (salt % 7) * 0.31
-    var mossDx = Math.cos(mossAng) * potR * (0.32 + 0.18 * noise(mPatch, 12, salt))
-    var mossDz = Math.sin(mossAng) * potR * (0.32 + 0.18 * noise(5 + mPatch, 9, salt))
+  for (var mPatch = 0; mPatch < 9; mPatch++) {
+    var mossAng = (mPatch / 9) * TAU + (salt % 7) * 0.31
+    if (noise(mPatch, 21, salt) < 0.34) continue        // gaps, or it hoops the rim
+    var mossSpread = 0.30 + 0.46 * noise(mPatch, 12, salt)   // out toward the rim
+    var mossDx = Math.cos(mossAng) * potR * mossSpread
+    var mossDz = Math.sin(mossAng) * potR * mossSpread
     var mossP = project([mossDx, pTopY + 0.7, mossDz], V)
+    // Moss is soil that has gone green, not foliage that fell off: keep it
+    // mostly the mound's own tone with a little of the canopy pulled through,
+    // or the patches read as loose leaves scattered on the dirt.
     var mossBase = {
-      r: clamp((pal.frond.r * 0.62 + pal.soil.r * 0.38) * 0.82, 0, 1),
-      g: clamp((pal.frond.g * 0.88 + pal.soil.g * 0.12) * 1.08, 0, 1),
-      b: clamp((pal.frond.b * 0.42 + pal.soil.b * 0.58) * 0.72, 0, 1)
+      r: clamp(soilBase.r * 0.58 + pal.frond.r * 0.42, 0, 1) * 0.86,
+      g: clamp(soilBase.g * 0.40 + pal.frond.g * 0.60, 0, 1) * 0.92,
+      b: clamp(soilBase.b * 0.62 + pal.frond.b * 0.38, 0, 1) * 0.80
     }
     mossOps.push({
       op: "blob", mat: "moss",
       cx: mossP.x,
       cy: mossP.y + 1.2 + (mPatch % 2) * 0.9,
-      rx: 7 + (mPatch % 3) * 1.5,
-      ry: 4 + (mPatch % 2) * 1.2,
+      rx: (3.2 + (mPatch % 3) * 1.1) * V.art,
+      ry: (1.5 + (mPatch % 2) * 0.6) * V.art,
       wobf: [noise(mPatch + 4, 1, salt) - 0.5, noise(mPatch + 7, 3, salt) - 0.5, noise(mPatch + 11, 5, salt) - 0.5],
       base: mossBase,
       night: night, gold: gold, ambient: ambient,
@@ -517,12 +556,20 @@ function build(sk, V) {
   // the surface roots sitting on the mound. Foliage + twigs go on top (leafOps).
   var rootOps = []
   for (var b = 0; b < limbDraw.length; b++) {
-    if (limbDraw[b].op.kind === "root") { rootOps.push(limbDraw[b].op); continue }
+    if (limbDraw[b].op.kind === "root") {
+      // Nebari lies half in the soil's shade. Lit like the trunk it reads as a
+      // pale slab dropped on the dirt instead of wood coming out of it.
+      var rop = limbDraw[b].op
+      rop.fill = mul(rop.fill, 0.72); rop.lo = mul(rop.lo, 0.66)
+      rop.hi = mul(rop.hi, 0.78); rop.edge = mul(rop.edge, 0.6)
+      rootOps.push(rop); continue
+    }
     if (limbDraw[b].level <= SPLIT_LEVEL) staticOps.push(limbDraw[b].op)
     else leafOps.push(limbDraw[b].op)
   }
-  staticOps.push(plateOp)
-  staticOps.push(waterOp)
+  for (var sq = 0; sq < saucerOps.length; sq++) staticOps.push(saucerOps[sq])
+  staticOps.push(dishOp)
+  for (var wq = 0; wq < waterOps.length; wq++) staticOps.push(waterOps[wq])
   for (var ps = 0; ps < potSideOps.length; ps++) staticOps.push(potSideOps[ps])
   staticOps.push(soilMoundOp)               // caps the walls + the buried trunk foot
   for (var mp = 0; mp < mossOps.length; mp++) staticOps.push(mossOps[mp])
@@ -671,14 +718,14 @@ var OMARCHY_PATH = [
 function omarchyMark(u, v, lx, ly) {
   // The front pot quad is walked from its right edge to its left edge, so its
   // local horizontal axis is mirrored relative to the SVG artwork.
-  var px = (((1 - u) - 0.5) / 0.72 + 0.5) * 1200
-  var py = ((v - 0.47) / 0.72 + 0.5) * 1200
+  var px = (((1 - u) - 0.5) / 0.60 + 0.5) * 1200
+  var py = ((v - 0.50) / 0.58 + 0.5) * 1200
   var inside = false
   for (var i = 0; i < OMARCHY_PATH.length; i++)
     if (pointInPoly(px, py, OMARCHY_PATH[i])) inside = !inside
   if (!inside) return 0
-  var facing = (py < 600 ? -ly : ly) * 0.18 + (px < 600 ? -lx : lx) * 0.18
-  return -0.40 + facing
+  var facing = (py < 600 ? -ly : ly) * 0.26 + (px < 600 ? -lx : lx) * 0.26
+  return -0.52 + facing
 }
 
 function polyPixel(op, x, y) {

@@ -107,9 +107,30 @@ Item {
   // it). Set from the panel's settings; persisted. The Desktop window reads
   // this binding and shows itself while planted && desktopEnabled.
   property bool desktopEnabled: false
+  // The ornament needs to still exist for a beat after it is switched off, or
+  // its window is destroyed mid-animation and the tree simply blinks out of
+  // the corner instead of hopping back to its housing.
+  property bool desktopLingering: false
+  Timer {
+    id: desktopLingerTimer
+    interval: 1000
+    onTriggered: root.desktopLingering = false
+  }
+  // Shallow view zoom for the panel — a big old tree outgrows the panel's
+  // height cap, and pulling back a little is how you look at the whole of it.
+  property real viewZoom: 1
+  function setZoom(z) {
+    var v = Math.max(0.62, Math.min(1.30, Number(z) || 1))
+    if (Math.abs(v - viewZoom) < 0.0005) return
+    viewZoom = v
+    flush()
+  }
+
   function setDesktop(on) {
     if (desktopEnabled === (on === true)) return
     desktopEnabled = on === true
+    if (desktopEnabled) { desktopLingering = false; desktopLingerTimer.stop() }
+    else { desktopLingering = true; desktopLingerTimer.restart() }
     flush()
   }
 
@@ -175,17 +196,20 @@ Item {
 
   readonly property string moodLabel: {
     switch (mood) {
-    case "waking": return "Waking up…"
-    case "unsown": return "Bare soil, waiting. Plant something."
-    case "germinating": return "A seed underground, taking its time."
+    // Everything the tree says, it says as itself. It is the only voice in
+    // here, and a companion that talks about itself in the third person is a
+    // specimen, not a companion.
+    case "waking": return "I am waking up…"
+    case "unsown": return "Bare soil. I am not planted yet."
+    case "germinating": return "I am underground still. Give me time."
     case "sapling": return origin === "cutting"
-      ? "A cutting, finding its feet." : "A brave little sprout."
-    case "thirsty": return "The soil is dry — water me."
-    case "shaded": return "Stretching toward the light…"
-    case "hungry": return "Hungry for fresh nutrients."
-    case "wild": return "Getting shaggy — time to trim."
-    case "meh": return "Doing alright, growing quietly."
-    default: return "Flourishing."
+      ? "I am finding my feet." : "I am small, but I am here."
+    case "thirsty": return "My soil has gone dry."
+    case "shaded": return "I am reaching for the light."
+    case "hungry": return "My roots are hungry."
+    case "wild": return "I have gone shaggy. Trim me?"
+    case "meh": return "I am alright. Growing quietly."
+    default: return "I am flourishing."
     }
   }
 
@@ -356,22 +380,36 @@ Item {
   function applyActiveMinute() {
     if (!planted) { lastActiveMs = nowMs; return }   // nothing sown yet
 
-    // Needs rise with active time; the machine being on means the plant must
-    // be tended. No absolute machine performance.
-    thirstLevel = Math.min(100, thirstLevel + 0.24)
-    // Sunlight is window-dependent in the real world; here it fades a touch
-    // slower because the glass house gets ambient light.
-    lightLevel = Math.min(100, lightLevel + 0.18)
-    soilLevel = Math.min(100, soilLevel + 0.22)
-    untidinessLevel = Math.min(100, untidinessLevel + 0.10)
+    // Needs rise with active time. The pacing is deliberate: this is a calm
+    // object, not a pet that punishes you for a weekend away. It is tuned so
+    // that ONE unhurried visit a day is enough, and each need moves on roughly
+    // the rhythm real bonsai practice moves on — so the habit it builds is the
+    // habit a real tree would want.
+    //
+    // (rates are per active minute; ~480 active minutes ≈ a working day)
+    //
+    // Water — the daily ritual. Asks by the end of a day's use.
+    thirstLevel = Math.min(100, thirstLevel + 0.145)
+    // Light — a slower slide; a bonsai left in a dim room complains in days,
+    // not hours, and the lamp is there for the dark half of the year.
+    lightLevel = Math.min(100, lightLevel + 0.085)
+    // Feeding — real bonsai are fed every few weeks in the growing season.
+    soilLevel = Math.min(100, soilLevel + 0.013)
+    // Form — pruning is seasonal work. It should be something you choose to
+    // sit down and do, never something nagging at you.
+    untidinessLevel = Math.min(100, untidinessLevel + 0.007)
 
     activeAgeMinutes += 1
     // Growth rate depends on wellbeing: a looked-after tree grows; a parched
     // one stalls. We want a young tree to mature over weeks of use, so the
     // per-minute pull is tiny. Misho (from seed) dawdles until it has roots;
     // a cutting is already established and races ahead early on.
+    // Growth is slow on purpose. A tree you can rush is not a tree — but a
+    // tree that never visibly changes is not a companion either, so a
+    // well-kept one crosses into a mature bonsai over a couple of months of
+    // daily use rather than a couple of weeks.
     var care = currentCareAverage / 100
-    var g = 0.00002 + 0.00010 * care
+    var g = 0.000008 + 0.000040 * care
     if (origin === "seed" && maturity < 0.14) g *= 0.45
     else if (origin === "cutting" && maturity < 0.4) g *= 1.4
     maturity = Math.min(1, maturity + g)
@@ -515,6 +553,7 @@ Item {
       prune: prune,
       yaw: yaw,
       desktopEnabled: desktopEnabled === true,
+      viewZoom: viewZoom,
       thirstLevel: thirstLevel,
       lightLevel: lightLevel,
       soilLevel: soilLevel,
@@ -595,6 +634,7 @@ Item {
       prune = pr
       yaw = (typeof s.yaw === "number" && isFinite(s.yaw)) ? s.yaw : 0
       desktopEnabled = s.desktopEnabled === true
+      if (s.viewZoom > 0) viewZoom = Math.max(0.62, Math.min(1.30, s.viewZoom))
       thirstLevel = num(s.thirstLevel)
       lightLevel = num(s.lightLevel)
       soilLevel = num(s.soilLevel)
@@ -694,7 +734,8 @@ Item {
   // actually switched on, and (b) a problem inside Desktop.qml can never take
   // the whole service down with it — the bar mark and panel keep working.
   Loader {
-    active: root.initialized && root.planted && root.desktopEnabled
+    active: root.initialized && root.planted
+      && (root.desktopEnabled || root.desktopLingering)
     source: Qt.resolvedUrl("Desktop.qml")
     onLoaded: if (item) item.bonsaiService = root
   }

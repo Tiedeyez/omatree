@@ -55,7 +55,7 @@ Panel {
     if (root._greeted || !root.ready || !root.planted) return
     root._greeted = true
     sunriseAnim.restart()
-    root.greetLine = (root.bonsaiService.treeName + " wakes").toLowerCase()
+    root.greetLine = ("good morning — I am " + root.bonsaiService.treeName).toLowerCase()
     greetTimer.restart()
   }
 
@@ -81,7 +81,7 @@ Panel {
   //   otherwise    -> "tree" | "water" | "lamp" | "feed" | "prune" | "settings"
   property bool kbActive: false
   property string kbFocus: ""
-  readonly property string treeHint: "← → turn it   ·   ↑ ↓ move"
+  readonly property string treeHint: "← → turn me   ·   scroll to zoom   ·   ↑ ↓ move"
 
   onKbFocusChanged: {
     if (kbFocus === "tree" && kbActive) hoverHint = treeHint
@@ -154,7 +154,7 @@ Panel {
       if (root.ready) {
         var putOut = !root.bonsaiService.desktopEnabled
         root.bonsaiService.setDesktop(putOut)
-        root.flashNote(putOut ? "out on the desktop" : "back in the bar")
+        root.flashNote(putOut ? "out on your desktop" : "home in the bar")
       }
       break
     case "growback":
@@ -203,11 +203,11 @@ Panel {
   }
   function needHint(action) {
     if (action === "lamp")
-      return (root.ready && bonsaiService.daylight) ? "bright by the window today"
-                                                    : "catching the dark — try the lamp"
-    return ({ water: "the soil dries as the machine runs",
-              feed: "nutrients for the roots",
-              prune: "prune to hold its shape" })[action] || ""
+      return (root.ready && bonsaiService.daylight) ? "I have good light today"
+                                                    : "it is dark out — leave my lamp on?"
+    return ({ water: "my soil dries while you work",
+              feed: "my roots would like something to eat",
+              prune: "trim me and I will hold the shape" })[action] || ""
   }
 
   KeyboardPanel {
@@ -395,6 +395,11 @@ Panel {
             onOrbitChanged: function (yaw) {
               if (root.ready) root.bonsaiService.setOrbit(yaw)
             }
+            // shallow zoom: scroll over the tree, persisted like the pose
+            zoom: root.ready ? root.bonsaiService.viewZoom : 1
+            onZoomChanged2: function (z) {
+              if (root.ready) root.bonsaiService.setZoom(z)
+            }
           }
 
           // keyboard focus ring on the tree — arrows turn the turntable
@@ -493,7 +498,7 @@ Panel {
 
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: "BARE SOIL  —  START IT"
+              text: "BARE SOIL  —  BEGIN ME"
               color: Qt.alpha(root.fg, 0.55)
               font.family: root.uiFont
               font.pixelSize: root.capSize
@@ -505,12 +510,12 @@ Panel {
               model: {
                 var choices = []
                 if (root.bonsaiService && root.bonsaiService.seedAvailable)
-                  choices.push({ how: "berrySeed", title: "FROM BERRY SEED", sub: "a seed carried forward from your fruit" })
+                  choices.push({ how: "berrySeed", title: "FROM BERRY SEED", sub: "carry my own fruit forward — begin me again from it" })
                 choices.push(
-                { how: "seed", title: "FROM SEED", sub: "misho — the slow way, from nothing" },
-                { how: "cutting", title: "FROM CUTTING", sub: "a rooted snip, a head start on its shape" })
+                { how: "seed", title: "FROM SEED", sub: "misho — start me from nothing, and wait with me" },
+                { how: "cutting", title: "FROM CUTTING", sub: "a rooted snip of me — I arrive already finding my shape" })
                 return choices
-              }()
+              }
               Rectangle {
                 id: card
                 required property var modelData
@@ -605,7 +610,7 @@ Panel {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             opacity: (root.flash === "" && root.hoverHint === "" && root.greetLine === "") ? 1 : 0
-            text: root.ready ? root.bonsaiService.moodLabel : "waking up…"
+            text: root.ready ? root.bonsaiService.moodLabel : "I am waking up…"
             color: root.fg
             font.family: root.uiFont
             font.pixelSize: Style.font.body
@@ -755,7 +760,7 @@ Panel {
                     Text {
                       id: fruitLabel
                       anchors.left: parent.left
-                      text: "FRUIT  ·  a little something grew"
+                      text: "FRUIT  ·  I made you something"
                       color: root.accent
                       font.family: root.uiFont
                       font.pixelSize: Style.font.bodySmall
@@ -872,9 +877,9 @@ Panel {
 
           Text {
             width: parent.width
-            text: "Omatree. Grown from a seed unique to this machine — no one "
-              + "else's is the same. It ages with your system, its light follows "
-              + "the clock, and it takes the shape you prune it into."
+            text: "I grew from a seed that belongs to this machine alone — no "
+              + "one else has me. I age alongside your system, my light follows "
+              + "your clock, and I keep the shape you prune me into."
             color: Qt.alpha(root.fg, 0.6)
             font.family: root.uiFont
             font.pixelSize: Style.font.bodySmall
@@ -943,7 +948,7 @@ Panel {
                 onClicked: {
                   var putOut = !root.bonsaiService.desktopEnabled
                   root.bonsaiService.setDesktop(putOut)
-                  root.flashNote(putOut ? "out on the desktop" : "back in the bar")
+                  root.flashNote(putOut ? "out on your desktop" : "home in the bar")
                 }
               }
             }
@@ -953,8 +958,8 @@ Panel {
               width: settingsCol.width
               horizontalAlignment: Text.AlignHCenter
               text: desktopToggle.on
-                ? "a copy rests in the lower-right corner — switch off to bring it back to its housing"
-                : "place a living copy in the lower-right corner of the screen"
+                ? "I am out in the lower-right corner of your screen — switch off and I will come home"
+                : "set me out on your desktop, in the lower-right corner"
               color: Qt.alpha(root.fg, 0.45)
               font.family: root.uiFont
               font.pixelSize: root.capSize
@@ -982,7 +987,7 @@ Panel {
               Text {
                 id: resetText
                 anchors.centerIn: parent
-                text: "let it grow back"
+                text: "let me grow back"
                 color: Qt.alpha(root.accent, 0.9)
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
@@ -1037,8 +1042,8 @@ Panel {
       ConfirmDialog {
         id: replantConfirm
         anchors.fill: parent
-        message: "Start over? " + (root.ready ? root.bonsaiService.treeName : "This tree")
-          + " is retired and you plant again from scratch."
+        message: "Begin again? " + (root.ready ? root.bonsaiService.treeName : "I")
+          + " will be retired, and you start me over from nothing."
         confirmText: "Start over"
         onConfirmed: {
           opened = false

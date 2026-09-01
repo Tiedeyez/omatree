@@ -38,6 +38,22 @@ Item {
   // device pixels per art-pixel — the chunk size
   readonly property int artScale: 2
   property real artUnits: 2.6              // art-px per Grow art-unit
+  // A shallow zoom: it scales the art RESOLUTION, not the finished image, so
+  // the pixels stay square and crisp at every step — and pulling out is how
+  // you see a tall old tree whole when the panel can no longer grow for it.
+  property real zoom: 1
+  readonly property real minZoom: 0.62
+  readonly property real maxZoom: 1.30
+  readonly property real artScaleUnits: root.artUnits * root.zoom
+  signal zoomChanged2(real z)
+  function stepZoom(dir) {
+    var z = Math.max(root.minZoom, Math.min(root.maxZoom,
+      root.zoom * (dir > 0 ? 1.08 : 1 / 1.08)))
+    if (Math.abs(z - root.zoom) < 0.0005) return
+    root.zoom = z
+    root.zoomChanged2(z)
+  }
+  onZoomChanged: { root._recomputeSize(); root.fullFrame() }
 
   // hand-pruning
   property bool pruneMode: false
@@ -180,7 +196,7 @@ Item {
   function _recomputeSize() {
     if (!root.skeleton) return
     var mz = Paint.measureStable(root.skeleton, {
-      art: root.artUnits, showCase: root.inHousing, yaw: root.renderYaw,
+      art: root.artScaleUnits, showCase: root.inHousing, yaw: root.renderYaw,
       pitch: root.renderPitch
     })
     root.artW = Math.max(40, Math.min(root.maxArtH * 0.9, mz.w))
@@ -265,7 +281,7 @@ Item {
   function _view() {
     return {
       yaw: root.renderYaw, pitch: root.renderPitch, showCase: root.inHousing,
-      art: root.artUnits,
+      art: root.artScaleUnits,
       w: root.artW, h: root.artH, originX: root.originX, originY: root.originY,
       sun: root.sun, lamp: root.tree && root.tree.lamp === true,
       palette: root.palette, time: root.animate ? root.phase : 0
@@ -423,6 +439,12 @@ Item {
       enabled: !root.pruneMode && !!root.skeleton
       acceptedButtons: Qt.LeftButton | Qt.MiddleButton
       cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+      onWheel: function (w) {
+        // Scroll is the shallow zoom; the wheel CLICK still steps the
+        // turntable, so both gestures live on the same hand.
+        root.stepZoom(w.angleDelta.y > 0 ? 1 : -1)
+        w.accepted = true
+      }
       onPressed: function (m) {
         // scroll-wheel click steps the turntable one notch
         if (m.button === Qt.MiddleButton) { root.stepYaw(1); return }

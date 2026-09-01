@@ -116,7 +116,7 @@ BarWidget {
     dimmed: !root.serviceReady
     tooltipText: root.serviceReady
       ? root.bonsaiService.treeName + " · " + root.bonsaiService.moodLabel
-      : "Bonsai"
+      : "Omatree · waking…"
     fixedWidth: root.vertical ? -1 : Math.round(content.implicitWidth + scaledHorizontalMargin * 2)
     fixedHeight: root.vertical ? Math.round(content.implicitHeight + scaledVerticalPadding * 2) : -1
 
