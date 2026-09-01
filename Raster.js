@@ -36,18 +36,33 @@ function rasterise(Paint, ops, w, h, bg, reveal) {
     buf[p * 3 + 1] = lit ? bg[1] : 0
     buf[p * 3 + 2] = lit ? bg[2] : 0
   }
+  // Depth buffer for the ops that make up the solid body of the tree (see the
+  // note in Paint.js). Ops without `depth` paint exactly as before AND clear
+  // the depth under themselves, so a pot wall or a foliage mass still covers
+  // whatever the painter order says it covers.
+  var zbuf = new Array(w * h)
+  for (var q = 0; q < w * h; q++) zbuf[q] = -Infinity
   for (var o = 0; o < ops.length; o++) {
     var op = ops[o]
     var bb = Paint.bboxOf(op)
     var x0 = Math.max(0, bb[0]), y0 = Math.max(cut, bb[1])
     var x1 = Math.min(w - 1, bb[2]), y1 = Math.min(h - 1, bb[3])
     var shade = _shader(Paint, op)
+    var tested = op.depth === 1
     for (var y = y0; y <= y1; y++) {
       var rowoff = y * w
       for (var x = x0; x <= x1; x++) {
         var c = shade(op, x, y)
         if (!c) continue
-        var i = (rowoff + x) * 3
+        var pi = rowoff + x
+        if (tested) {
+          var z = Paint.lastZ
+          if (z < zbuf[pi]) continue           // something solid is in front
+          zbuf[pi] = z
+        } else {
+          zbuf[pi] = -Infinity
+        }
+        var i = pi * 3
         buf[i] = c[0] | 0; buf[i + 1] = c[1] | 0; buf[i + 2] = c[2] | 0
       }
     }
@@ -112,12 +127,15 @@ function rasteriseRGBA(Paint, ops, w, h, reveal, opaque) {
   var cut = reveal >= 1 ? 0 : Math.floor((1 - Math.max(0, reveal)) * h)
   var buf = new Array(w * h * 4)
   for (var p = 0; p < w * h * 4; p++) buf[p] = 0
+  var zbuf = new Array(w * h)
+  for (var q = 0; q < w * h; q++) zbuf[q] = -Infinity
   for (var o = 0; o < ops.length; o++) {
     var op = ops[o]
     var bb = Paint.bboxOf(op)
     var x0 = Math.max(0, bb[0]), y0 = Math.max(cut, bb[1])
     var x1 = Math.min(w - 1, bb[2]), y1 = Math.min(h - 1, bb[3])
     var shade = _shader(Paint, op)
+    var tested = op.depth === 1
     for (var y = y0; y <= y1; y++) {
       var rowoff = y * w
       for (var x = x0; x <= x1; x++) {
@@ -125,7 +143,15 @@ function rasteriseRGBA(Paint, ops, w, h, reveal, opaque) {
         if (!c) continue
         var a = opaque ? 255 : (c.length > 3 ? (c[3] | 0) : 255)
         if (a <= 0) continue
-        var i = (rowoff + x) * 4
+        var pi = rowoff + x
+        if (tested) {
+          var z = Paint.lastZ
+          if (z < zbuf[pi]) continue           // something solid is in front
+          zbuf[pi] = z
+        } else {
+          zbuf[pi] = -Infinity
+        }
+        var i = pi * 4
         if (a >= 255) {
           buf[i] = c[0] | 0; buf[i + 1] = c[1] | 0; buf[i + 2] = c[2] | 0; buf[i + 3] = 255
         } else {

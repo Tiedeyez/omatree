@@ -255,7 +255,7 @@ function grow(gen, state) {
       if (trunkPts[fp].p[1] >= 0.2 && trunkPts[fp].p[1] <= 3.0)
         flareR = Math.max(flareR, trunkPts[fp].r)
     if (flareR <= 0) flareR = trunkR
-    var rootR = Math.min(flareR * 0.30, 4.6)
+    var rootR = Math.min(flareR * 0.38, 5.2)
     for (var ri = 0; ri < nRoots; ri++) {
       var ra0 = (ri / nRoots) * TAU + rootRng() * 0.8
       // splay, but never past the soil surface: the rim is the hard stop

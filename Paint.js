@@ -17,6 +17,23 @@
 var PI = Math.PI
 var TAU = PI * 2
 
+// ---- the depth channel ----------------------------------------------------
+// The draw list is painted back-to-front, which is fine for things that stack
+// (foliage masses, the faces of the pot) and wrong for things that INTERSECT.
+// A root crossing another root, a branch passing through the trunk, moss
+// growing around a root: those share the same volume, and no ordering of whole
+// ops can resolve them — one of them always paints flat over the other and the
+// tree stops reading as a single solid object.
+//
+// So ops that make up the wood-and-soil body carry `depth: 1`. Their shaders
+// leave the depth of the surface they just shaded in `lastZ`, and the
+// rasteriser keeps a z-buffer for them, resolving the overlap per pixel. Ops
+// without the flag paint exactly as before, so the sprite look — the stacked
+// clump masses, the flat pot faces, the silhouette rims — is untouched.
+// Larger z is NEARER the viewer (project() puts +z toward the camera).
+var lastZ = 0
+
+var DEPTH_BULGE  = 0.5       // how much of a limb's radius counts toward its depth
 var PITCH        = 0.26      // fixed downward view tilt (radians) — look slightly
                             // DOWN at the plant, so the pot rim + soil read as
                             // surfaces, not edge-on slivers
@@ -491,10 +508,13 @@ function build(sk, V) {
   for (var mPatch = 0; mPatch < 9; mPatch++) {
     var mossAng = (mPatch / 9) * TAU + (salt % 7) * 0.31
     if (noise(mPatch, 21, salt) < 0.34) continue        // gaps, or it hoops the rim
-    var mossSpread = 0.30 + 0.46 * noise(mPatch, 12, salt)   // out toward the rim
+    // Out near the rim, never over the nebari: the spread of the roots is the
+    // thing worth looking at, and now that the depth pass puts moss properly in
+    // FRONT of what it overlaps, a patch sitting mid-mound simply buries them.
+    var mossSpread = 0.58 + 0.34 * noise(mPatch, 12, salt)
     var mossDx = Math.cos(mossAng) * potR * mossSpread
     var mossDz = Math.sin(mossAng) * potR * mossSpread
-    var mossP = project([mossDx, pTopY + 0.7, mossDz], V)
+    var mossP = project([mossDx, pTopY + 0.15, mossDz], V)
     // Moss is soil that has gone green, not foliage that fell off: keep it
     // mostly the mound's own tone with a little of the canopy pulled through,
     // or the patches read as loose leaves scattered on the dirt.
@@ -504,11 +524,11 @@ function build(sk, V) {
       b: clamp(soilBase.b * 0.62 + pal.frond.b * 0.38, 0, 1) * 0.80
     }
     mossOps.push({
-      op: "blob", mat: "moss",
+      op: "blob", mat: "moss", depth: 1,
       cx: mossP.x,
       cy: mossP.y + 1.2 + (mPatch % 2) * 0.9,
-      rx: (3.2 + (mPatch % 3) * 1.1) * V.art,
-      ry: (1.5 + (mPatch % 2) * 0.6) * V.art,
+      rx: (2.5 + (mPatch % 3) * 0.85) * V.art,
+      ry: (1.0 + (mPatch % 2) * 0.35) * V.art,
       wobf: [noise(mPatch + 4, 1, salt) - 0.5, noise(mPatch + 7, 3, salt) - 0.5, noise(mPatch + 11, 5, salt) - 0.5],
       base: mossBase,
       night: night, gold: gold, ambient: ambient,
@@ -540,7 +560,7 @@ function build(sk, V) {
     for (var pz = 0; pz < Lm.pts.length; pz++) zsum += Lm.pts[pz][3]
     var wbase = ambient + (1 - ambient) * 0.62 * (night ? 0.5 : sun.intensity)
     var op = {
-      op: "stroke", pts: Lm.pts, mat: "wood",
+      op: "stroke", pts: Lm.pts, mat: "wood", depth: 1, iart: 1 / V.art,
       fill: shade(pal.trunk, wbase, night, gold),
       lo: shade(pal.trunk, wbase * 0.78, night, gold),
       hi: shade(pal.trunk, wbase * 1.3, night, gold),
@@ -557,11 +577,13 @@ function build(sk, V) {
   var rootOps = []
   for (var b = 0; b < limbDraw.length; b++) {
     if (limbDraw[b].op.kind === "root") {
-      // Nebari lies half in the soil's shade. Lit like the trunk it reads as a
-      // pale slab dropped on the dirt instead of wood coming out of it.
+      // Nebari lies a little in the soil's shade — but only a little. It is
+      // the same wood as the trunk and, now that the depth pass welds it in
+      // rather than stacking it on top, it no longer needs darkening to stop
+      // reading as a slab.
       var rop = limbDraw[b].op
-      rop.fill = mul(rop.fill, 0.72); rop.lo = mul(rop.lo, 0.66)
-      rop.hi = mul(rop.hi, 0.78); rop.edge = mul(rop.edge, 0.6)
+      rop.fill = mul(rop.fill, 0.90); rop.lo = mul(rop.lo, 0.84)
+      rop.hi = mul(rop.hi, 0.94); rop.edge = mul(rop.edge, 0.80)
       rootOps.push(rop); continue
     }
     if (limbDraw[b].level <= SPLIT_LEVEL) staticOps.push(limbDraw[b].op)
@@ -787,7 +809,7 @@ function strokePixel(op, x, y) {
   var px = x + 0.5, py = y + 0.5
   var pts = op.pts
   var bestSD = 1e9       // signed dist to surface (neg = inside), tracked as min
-  var bestNx = 0, bestNy = -1, bestZ = 0
+  var bestNx = 0, bestNy = -1, bestZ = 0, bestR = 1
   for (var i = 0; i < pts.length - 1; i++) {
     var ax = pts[i][0], ay = pts[i][1], bx = pts[i + 1][0], by = pts[i + 1][1]
     var dx = bx - ax, dy = by - ay
@@ -803,9 +825,17 @@ function strokePixel(op, x, y) {
       bestNx = d > 0.01 ? ex / d : 0
       bestNy = d > 0.01 ? ey / d : -1
       bestZ = pts[i][3] + (pts[i + 1][3] - pts[i][3]) * t
+      bestR = r
     }
   }
   if (bestSD > 0) return null
+  // The limb is round: its surface bulges toward the viewer over its axis, so
+  // two limbs that cross weld along the seam where their surfaces actually
+  // meet instead of one flatly covering the other. (Radii are art-px, z is in
+  // model units, hence op.iart.)
+  var dAxis = bestR + bestSD
+  var bulge = Math.sqrt(Math.max(0, bestR * bestR - dAxis * dAxis))
+  lastZ = bestZ + bulge * (op.iart || 0) * DEPTH_BULGE
   if (op.mat === "glass") {
     // a flat hairline pane edge — no bark, no silhouette darkening; a sparse
     // sparkle fleck sells it as glass. Translucent (op.alpha) so the wallpaper
@@ -852,6 +882,7 @@ function moundPixel(op, x, y) {
 }
 
 function blobPixel(op, x, y) {
+  lastZ = op.z
   var nx = (x + 0.5 - op.cx) / op.rx
   var ny = (y + 0.5 - op.cy) / op.ry
   var ang = Math.atan2(ny, nx)

@@ -14,7 +14,11 @@ function loadLib (rel, exportList) {
   const src = FS.readFileSync(path.join(__dirname, '..', rel), 'utf8')
     .replace(/^\s*\.pragma\b.*$/m, '')
   const m = { exports: {} }
-  new Function('module', 'exports', src + `\nmodule.exports={${exportList}};`)(m, m.exports)
+  // `lastZ` is a live depth channel the shaders write to, so it has to be read
+  // through a getter — a plain export would freeze it at load time and the
+  // preview's z-buffer would silently do nothing.
+  new Function('module', 'exports', src + `\nmodule.exports={${exportList}};`
+    + `\ntry{Object.defineProperty(module.exports,'lastZ',{get:function(){return lastZ}})}catch(e){}`)(m, m.exports)
   return m.exports
 }
 
@@ -34,18 +38,28 @@ function shaderFor (op) {
 function renderBuffer (ops, w, h, bg) {
   w = Math.max(1, w | 0); h = Math.max(1, h | 0)
   const buf = new Uint8ClampedArray(w * h * 4)      // rgba, a=0 transparent
+  const zbuf = new Float64Array(w * h).fill(-Infinity)
   for (const op of ops) {
     const bb = Paint.bboxOf(op)
     const x0 = Math.max(0, bb[0]), y0 = Math.max(0, bb[1])
     const x1 = Math.min(w - 1, bb[2]), y1 = Math.min(h - 1, bb[3])
     const shade = shaderFor(op)
+    const tested = op.depth === 1
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const c = shade(op, x, y)
         if (!c) continue
         const a = c.length > 3 ? (c[3] | 0) : 255
         if (a <= 0) continue
-        const i = (y * w + x) * 4
+        const pi = y * w + x
+        if (tested) {
+          const z = Paint.lastZ
+          if (z < zbuf[pi]) continue
+          zbuf[pi] = z
+        } else {
+          zbuf[pi] = -Infinity
+        }
+        const i = pi * 4
         if (a >= 255) {
           buf[i] = c[0]; buf[i + 1] = c[1]; buf[i + 2] = c[2]; buf[i + 3] = 255
         } else {
