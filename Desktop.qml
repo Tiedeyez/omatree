@@ -41,18 +41,15 @@ PanelWindow {
   readonly property real bedH: Math.min(maxDesktopH, naturalH * desktopScale)
   readonly property real bedW: Math.min(maxDesktopW, naturalW * desktopScale)
 
-  // Headroom above (and a little beside) the bed so the tree has somewhere to
-  // arrive FROM. A layer-shell surface clips its children, so without this the
-  // arc would be sliced off at the window edge. The padding is transparent and
-  // outside the input mask, so it costs the desktop nothing.
-  // Bounded by what is left of the screen above the bed — a surface taller
-  // than the output gets pushed off the top edge, and the tree would then
-  // start its fall somewhere nobody can see.
-  readonly property real flightPadY: Math.max(24, Math.min(
-    Math.round(root.bedH * 0.62), Math.round(Screen.height - root.bedH - 34)))
-  readonly property real flightPadX: Math.round(root.bedW * 0.34)
-
-  implicitWidth: Math.round(bedW + flightPadX)
+  // Headroom above the bed: the shaft the tree comes down. A layer-shell
+  // surface clips its children, which is exactly what makes the descent read
+  // as sliding out from under something rather than fading in — so the window
+  // reaches as high as the output allows (a surface taller than the screen
+  // gets pushed off the top edge instead). It is transparent and outside the
+  // input mask, so it costs the desktop nothing.
+  readonly property real flightPadY: Math.max(24,
+    Math.round(Screen.height - root.bedH - 34))
+  implicitWidth: Math.round(bedW)
   implicitHeight: Math.round(bedH + flightPadY)
 
   color: "transparent"
@@ -68,64 +65,31 @@ PanelWindow {
   }
 
   // ---- the arrival ----------------------------------------------------
-  // It does not get thrown out here. It comes forward out of the panel and
-  // arrives at full size: a hard, fast enlargement that slams to scale and
-  // stops dead. Anything springy or wobbly reads as a toy being tossed; this
-  // should read as a thing planting itself.
+  // The tree does not grow, shrink, tumble or bounce its way out here. The
+  // whole sprite, at its true size, simply comes down out of the panel and
+  // keeps coming until it is standing in the corner — the way something slides
+  // out when a lid opens above it. The window reaches up to just under the bar
+  // and clips anything above it, so the tree is genuinely revealed edge-first
+  // rather than faded in.
   //
   // PanelWindow is not an Item (no states/transitions on the window itself),
   // so the choreography lives in plain numeric properties here and is applied
-  // through transforms on the bed's children.
-  property real _fly: 0        // 0 = still back in the panel, 1 = at full size
-  property real _dust: 0       // 0..1 the beat of the impact
+  // through a translate on the bed's children.
+  property real _fly: 0        // 0 = still up inside the panel, 1 = standing in the corner
   readonly property bool _airborne: root._fly < 0.999
 
-  // It grows out of where the panel is — up and inboard of the corner — and
-  // converges straight in. A short, direct travel; no arc, no swing.
-  readonly property real _travelY: -(1 - root._fly) * (root.flightPadY * 0.55)
-  readonly property real _travelX: -(1 - root._fly) * (root.bedW * 0.10)
-  // the slam itself: tiny to full, with just enough overshoot to land hard
-  property real _pop: 0        // 0..1, eased separately from the travel
-  readonly property real _flyScale: 0.10 + 0.90 * root._pop
+  // one straight, unhurried descent — no arc, no scale, no rotation
+  readonly property real _travelY: -(1 - root._fly) * (root.bedH + root.flightPadY)
 
-  SequentialAnimation {
+  NumberAnimation {
     id: arriveAnim
-    PropertyAction { target: root; property: "_dust"; value: 0 }
-    ParallelAnimation {
-      NumberAnimation {
-        target: root; property: "_fly"; to: 1
-        duration: 240; easing.type: Easing.OutQuart
-      }
-      NumberAnimation {
-        target: root; property: "_pop"; to: 1.06
-        duration: 240; easing.type: Easing.OutQuart       // rushes to size
-      }
-    }
-    ParallelAnimation {
-      // and stops dead on the mark — one hard settle, no bounce back and forth
-      NumberAnimation {
-        target: root; property: "_pop"; to: 1
-        duration: 110; easing.type: Easing.OutQuad
-      }
-      SequentialAnimation {
-        NumberAnimation { target: root; property: "_dust"; to: 1; duration: 420; easing.type: Easing.OutCubic }
-        PropertyAction { target: root; property: "_dust"; value: 0 }
-      }
-    }
+    target: root; property: "_fly"; to: 1
+    duration: 620; easing.type: Easing.OutCubic
   }
-
-  SequentialAnimation {
+  NumberAnimation {
     id: departAnim
-    // a short lean in before it goes, then it collapses back into the panel
-    NumberAnimation { target: root; property: "_pop"; to: 1.07; duration: 90; easing.type: Easing.OutQuad }
-    ParallelAnimation {
-      NumberAnimation { target: root; property: "_pop"; to: 0; duration: 230; easing.type: Easing.InQuart }
-      NumberAnimation { target: root; property: "_fly"; to: 0; duration: 230; easing.type: Easing.InQuart }
-      SequentialAnimation {
-        NumberAnimation { target: root; property: "_dust"; to: 1; duration: 300; easing.type: Easing.OutCubic }
-        PropertyAction { target: root; property: "_dust"; value: 0 }
-      }
-    }
+    target: root; property: "_fly"; to: 0
+    duration: 480; easing.type: Easing.InCubic
   }
 
   onShowTreeChanged: {
@@ -134,7 +98,7 @@ PanelWindow {
     else departAnim.restart()
   }
   Component.onCompleted: {
-    root._fly = 0; root._pop = 0
+    root._fly = 0
     if (root.showTree) arriveAnim.start()
   }
 
@@ -150,10 +114,10 @@ PanelWindow {
     Rectangle {
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
-      width: Math.round(bed.width * (0.16 + 0.30 * root._pop))
+      width: Math.round(bed.width * (0.16 + 0.30 * root._fly))
       height: 4
       radius: 2
-      color: Qt.alpha(Color.accent, 0.05 + 0.16 * root._pop)
+      color: Qt.alpha(Color.accent, 0.05 + 0.16 * root._fly)
     }
 
     Bonsai {
@@ -164,7 +128,7 @@ PanelWindow {
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       scale: root.desktopScale
-      opacity: Math.min(1, root._pop * 5)
+      opacity: 1
       transformOrigin: Item.Bottom
       active: root.showTree
       transparent: true
@@ -176,43 +140,7 @@ PanelWindow {
       onOrbitChanged: function (yaw) { if (root.ready && !root.showTree) bonsaiService.setOrbit(yaw) }
       Component.onCompleted: tree.yaw = 0
 
-      // The enlargement pivots on the pot's base, so the pot arrives planted
-      // on the screen edge rather than dropping onto it.
-      transform: [
-        Scale {
-          origin.x: tree.width / 2; origin.y: tree.height
-          xScale: root._flyScale; yScale: root._flyScale
-        },
-        Translate { x: root._travelX; y: root._travelY }
-      ]
-    }
-
-    // ---- landing puff: a ring that opens out and thins away -------------
-    Rectangle {
-      visible: root._dust > 0.01
-      anchors.horizontalCenter: parent.horizontalCenter
-      anchors.bottom: parent.bottom
-      anchors.bottomMargin: -1
-      width: Math.round(bed.width * (0.14 + 0.58 * root._dust))
-      height: Math.max(3, Math.round(bed.width * 0.055 * (1 - root._dust * 0.55)))
-      radius: height / 2
-      color: "transparent"
-      border.width: 1
-      border.color: Qt.alpha(Color.accent, Math.max(0, 0.5 * (1 - root._dust)))
-    }
-    // motes thrown out sideways by the impact
-    Repeater {
-      model: 7
-      delegate: Rectangle {
-        required property int index
-        readonly property real dir: (index % 2 === 0 ? 1 : -1)
-        readonly property real spread: 0.12 + 0.09 * (index % 4)
-        visible: root._dust > 0.01
-        width: 2; height: 2
-        color: Qt.alpha(Color.accent, Math.max(0, 0.55 * (1 - root._dust)))
-        x: bed.width / 2 - 1 + dir * bed.width * spread * root._dust * 3.2
-        y: bed.height - 3 - bed.height * 0.06 * Math.sin(root._dust * Math.PI) * (1 + (index % 3))
-      }
+      transform: Translate { y: root._travelY }
     }
 
     // a thin accent line right at the screen edge the pot rests on
@@ -221,8 +149,8 @@ PanelWindow {
       width: Math.round(bed.width * 0.34); height: 2; radius: 1
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
-      color: Qt.alpha(Color.accent, 0.16 + 0.22 * root._pop)
-      opacity: root._pop
+      color: Qt.alpha(Color.accent, 0.16 + 0.22 * root._fly)
+      opacity: Math.max(0, root._fly * 3 - 2)
     }
 
     // ---- tap to summon the full panel -----------------------------------

@@ -257,7 +257,7 @@ function grow(gen, state) {
     if (flareR <= 0) flareR = trunkR
     var rootR = Math.min(flareR * 0.38, 5.2)
     for (var ri = 0; ri < nRoots; ri++) {
-      var ra0 = (ri / nRoots) * TAU + rootRng() * 0.8
+      var ra0 = (ri / nRoots) * TAU + (rootRng() - 0.5) * 1.5
       // splay, but never past the soil surface: the rim is the hard stop
       var rlen = Math.min(flareR * (1.1 + rootRng() * 1.0), potR * 0.50)
       var rdx = Math.cos(ra0), rdz = Math.sin(ra0)
@@ -265,12 +265,18 @@ function grow(gen, state) {
       // rolls over the shoulder of the flare and dives into the soil: the
       // shape a buttress root actually makes, and it keeps the join tangent to
       // the trunk instead of cutting across it.
-      var yTop = 1.5 + rootRng() * 0.9
+      var yTop = 2.3 + rootRng() * 0.9
+      // A surface root rides PROUD of the soil for most of its run — that
+      // ridge is the nebari, and it is the thing you are meant to look at —
+      // and only slips under right at the tip.
       var arc = [
         [footX, yTop, footZ],
-        [footX + rdx * rlen * 0.34, yTop * 0.62, footZ + rdz * rlen * 0.34],
-        [footX + rdx * rlen * 0.74, 0.75 + rootRng() * 0.5, footZ + rdz * rlen * 0.74],
-        [footX + rdx * rlen, 0.15 + rootRng() * 0.35, footZ + rdz * rlen]
+        [footX + rdx * rlen * 0.34, yTop * 0.74, footZ + rdz * rlen * 0.34],
+        [footX + rdx * rlen * 0.78, 1.15 + rootRng() * 0.45, footZ + rdz * rlen * 0.78],
+        // The tip finishes just under the soil line: a surface root shows its
+        // shoulder for most of its run and then slips into the ground, rather
+        // than lying on top of it or stopping dead at the surface.
+        [footX + rdx * rlen, -0.55 - rootRng() * 0.4, footZ + rdz * rlen]
       ]
       var rads = [rootR, rootR * 0.74, rootR * 0.42, rootR * 0.16]
       for (var rk = 0; rk < 3; rk++)

@@ -33,6 +33,7 @@ var TAU = PI * 2
 // Larger z is NEARER the viewer (project() puts +z toward the camera).
 var lastZ = 0
 
+var GROUND_BIAS  = 2.2       // soil yields to wood resting on it (z-fight guard)
 var DEPTH_BULGE  = 0.5       // how much of a limb's radius counts toward its depth
 var PITCH        = 0.26      // fixed downward view tilt (radians) — look slightly
                             // DOWN at the plant, so the pot rim + soil read as
@@ -490,8 +491,10 @@ function build(sk, V) {
     g: pal.soil.g * 0.42 + pal.pot.g * 0.58,
     b: pal.soil.b * 0.42 + pal.pot.b * 0.58
   }
+  var pitchNow = V.pitch !== undefined ? V.pitch : PITCH
   var soilMoundOp = {
-    op: "mound", mat: "soil",
+    op: "mound", mat: "soil", depth: 1,
+    cy0: soilP.y, zk: 1 / Math.max(0.02, Math.sin(pitchNow) * V.art),
     cx: soilP.x, cy: soilP.y + moundLift * 0.15,
     // The soil is a rounded, near-circular fill over the whole pot opening.
     // Its projected footprint is wider than the crown so it reaches the
@@ -499,7 +502,7 @@ function build(sk, V) {
     rx: potR * 1.16 * V.art,
     ry: potR * 0.22 * V.art + moundLift,
     base: soilBase, lx: lx, ly: ly,
-    ambient: night ? 0.56 : 0.64, intensity: night ? 0.6 : sun.intensity,
+    ambient: night ? 0.62 : 0.72, intensity: night ? 0.6 : sun.intensity,
     dryness: soilDryness, night: night, gold: gold, salt: salt,
     clip: [[CP[0].x, CP[0].y], [CP[1].x, CP[1].y],
            [CP[2].x, CP[2].y], [CP[3].x, CP[3].y]]
@@ -525,6 +528,7 @@ function build(sk, V) {
     }
     mossOps.push({
       op: "blob", mat: "moss", depth: 1,
+      cy0: soilP.y, zk: 1 / Math.max(0.02, Math.sin(pitchNow) * V.art),
       cx: mossP.x,
       cy: mossP.y + 1.2 + (mPatch % 2) * 0.9,
       rx: (2.5 + (mPatch % 3) * 0.85) * V.art,
@@ -864,6 +868,12 @@ function strokePixel(op, x, y) {
 // top-lit, gravel-grained, darker toward the front lip where the pot shades it.
 function moundPixel(op, x, y) {
   if (op.clip && !pointInPoly(x + 0.5, y + 0.5, op.clip)) return null
+  // The soil is a flat plane, so its depth is a straight function of screen y:
+  // under a downward pitch, ground further from the viewer sits higher up the
+  // image. This is what lets wood be BURIED — a root that dives below the
+  // surface, or the near lip of the mound in front of the trunk's foot, is now
+  // resolved by the ground itself rather than by draw order.
+  lastZ = (y + 0.5 - op.cy0) * op.zk - GROUND_BIAS
   var nx = (x + 0.5 - op.cx) / op.rx
   var ny = (y + 0.5 - op.cy) / op.ry
   var rr = nx * nx + ny * ny
@@ -882,7 +892,11 @@ function moundPixel(op, x, y) {
 }
 
 function blobPixel(op, x, y) {
-  lastZ = op.z
+  // Moss is a skin on the soil, so it takes the ground's depth rather than a
+  // card depth — a flat card cuts through a sloped ground plane and the patch
+  // comes out sliced into stripes. Everything else keeps its card depth, which
+  // is what lets the foliage masses stack as sprites.
+  lastZ = op.cy0 !== undefined ? (y + 0.5 - op.cy0) * op.zk : op.z
   var nx = (x + 0.5 - op.cx) / op.rx
   var ny = (y + 0.5 - op.cy) / op.ry
   var ang = Math.atan2(ny, nx)
