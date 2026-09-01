@@ -42,9 +42,13 @@ var PHOTOTROPISM = 0.16     // per-level blend of branch dir back toward world-u
 // thicker than the stub they sprang from — that continuity is most of what
 // makes a drawn tree read as one grown object instead of assembled parts.
 var PIPE_LEAK    = 0.94     // a little area lost to bark/heartwood at each fork
-var BOUGH_SHARE  = 0.22     // fraction of trunk area a single main bough takes
-var LIMB_TAPER   = 0.28     // girth a limb loses along its OWN length
-var COLLAR       = 1.24     // branch-collar swelling where a limb leaves its parent
+// A primary bough in the reference is not a stick on a pole — it is most of
+// the trunk turning a corner, nearly as thick as what it leaves, with a wide
+// smooth crotch. A big share here is what buys that: the bough comes out fat
+// and the trunk above it visibly loses the wood it gave away.
+var BOUGH_SHARE  = 0.34     // fraction of trunk area a single main bough takes
+var LIMB_TAPER   = 0.34     // girth a limb loses along its OWN length
+var COLLAR       = 1.38     // branch-collar swelling where a limb leaves its parent
 var SAG_C        = 0.30     // cantilever droop coefficient (see sagAt)
 
 // Beam deflection: a limb bends under its own weight as roughly L^3 / r^4, and
@@ -54,8 +58,10 @@ function sagAt(length, radius, frac, load) {
   var slender = length / Math.max(0.6, radius * 4)
   return Math.min(0.9, SAG_C * Math.pow(slender, 1.35) * frac * frac * load)
 }
-var CLUMP_R_BASE = 2.4
-var CLUMP_R_GROW = 4.6
+// Foliage in the reference is two or three big cloud volumes with a leafy
+// silhouette, held up by visible branches — not a scatter of small puffs.
+var CLUMP_R_BASE = 3.1
+var CLUMP_R_GROW = 5.6
 var NODE_CAP     = 820
 var CLUMP_CAP    = 130
 var AGE_GAIN     = 4.2      // trunk/branch length multiplier approached with age
@@ -223,13 +229,21 @@ function grow(gen, state) {
     // basal flare / nebari — the trunk swells to a peak right at the soil line
     // (y≈0) and eases off above it, so it reads as rooted rather than propped.
     // Keyed to world height, not t (TRUNK_BURY puts t≈0.45 at the soil).
-    var flare = 1 + 0.55 * clamp((4 - Math.abs(y - 1)) / 7, 0, 1)
+    // The trunk does not meet the ground, it SPREADS into it — but it is a
+    // shaft with a flared foot, not a cone. Keyed to trunk height so the
+    // spread always occupies the lower third and the shaft above stays a
+    // shaft, whatever size the tree has grown to.
+    var flareSpan = trunkH * 0.34
+    var flare = 1 + 0.78 * clamp((flareSpan - Math.abs(y - 1)) / (flareSpan * 1.5), 0, 1)
     // and tuck the BURIED foot back in — otherwise a big old trunk paints a
     // giant hidden disc that spills out past the pot.
     var buriedTuck = y < 0 ? clamp((y + TRUNK_BURY) / TRUNK_BURY + 0.3, 0.32, 1) : 1
     // The trunk's own slow taper is gentle now — most of the narrowing comes
     // from the wood that leaves at each bough.
-    var r = trunkR * (1 - 0.46 * t) * trunkPipe(t) * flare * buriedTuck
+    var r = trunkR * (1 - 0.48 * t) * trunkPipe(t) * flare * buriedTuck
+    // ...but the spread has to stay inside its own pot. A flare wider than the
+    // rim reads as a tree sitting ON the pot rather than growing out of it.
+    if (y < flareSpan * 1.5) r = Math.min(r, potR * 0.66)
     trunkPts.push({ p: p, r: r })
   }
   for (var s = 0; s < trunkPts.length; s++) {
@@ -245,7 +259,7 @@ function grow(gen, state) {
   // so the trunk and the pot read as one planted thing
   if ((state.origin === "seed" || state.origin === "cutting") && m > 0.06) {
     var rootRng = rngFor(seed, "roots")
-    var nRoots = 3 + Math.floor(rootRng() * 3)          // 3..5
+    var nRoots = 3 + Math.floor(rootRng() * 2)          // 3..4, but each one big
     var footX = trunkPts[0].p[0], footZ = trunkPts[0].p[2]
     // The girth the buttresses are carved out of is the trunk's own flare at
     // the soil line — a root is the flare continuing, not a stick leaning on
@@ -255,7 +269,7 @@ function grow(gen, state) {
       if (trunkPts[fp].p[1] >= 0.2 && trunkPts[fp].p[1] <= 3.0)
         flareR = Math.max(flareR, trunkPts[fp].r)
     if (flareR <= 0) flareR = trunkR
-    var rootR = Math.min(flareR * 0.38, 5.2)
+    var rootR = Math.min(flareR * 0.55, 7.0)
     for (var ri = 0; ri < nRoots; ri++) {
       var ra0 = (ri / nRoots) * TAU + (rootRng() - 0.5) * 1.5
       // splay, but never past the soil surface: the rim is the hard stop
@@ -278,7 +292,7 @@ function grow(gen, state) {
         // than lying on top of it or stopping dead at the surface.
         [footX + rdx * rlen, -0.55 - rootRng() * 0.4, footZ + rdz * rlen]
       ]
-      var rads = [rootR, rootR * 0.74, rootR * 0.42, rootR * 0.16]
+      var rads = [rootR, rootR * 0.78, rootR * 0.46, rootR * 0.12]
       for (var rk = 0; rk < 3; rk++)
         seg("root" + ri, arc[rk], arc[rk + 1], rads[rk], rads[rk + 1], 0, "root")
     }
@@ -366,7 +380,7 @@ function grow(gen, state) {
     // Split the stub's cross-section between the children rather than handing
     // each a fixed fraction of the parent — that is what stopped children from
     // being born fatter than the twig they grow out of.
-    var kidR = endR * Math.pow(1 / kids, 0.5) * PIPE_LEAK * (0.72 + 0.45 * taper)
+    var kidR = endR * Math.pow(1 / kids, 0.5) * PIPE_LEAK * (0.86 + 0.30 * taper)
     for (var c = 0; c < kids; c++) {
       var cid = id + "." + c
       if (clamp(prune[cid] || 0, 0, 1) >= 0.98) continue
