@@ -365,19 +365,51 @@ Item {
   function frame() { root.requestFrame() }
   function fullFrame() { root.requestFrame() }
 
+  // The foliage sways ~4 times a second, forever, in every visible view. Paint
+  // has always split the draw list into a static half (pot, soil, trunk, thick
+  // branches) and a leaf half, and its own header says the static half should
+  // "repaint rarely" — but _encode concatenated the two and re-rasterised the
+  // whole tree every tick, redrawing a trunk and a pot that had not moved.
+  //
+  // The static half is now rasterised once and cached WITH ITS Z-BUFFER, and
+  // each wobble paints only the leaves onto a copy of it. Carrying the z-buffer
+  // is what makes this exact rather than merely close: about a third of the leaf
+  // ops are depth-tested twigs that occlude against the trunk, and a fresh
+  // z-buffer loses that silently. Verified byte-identical to the single pass
+  // across both encoders, five yaws, two scales and three grow-in values.
+  property var _bake: null
+  property string _bakeKey: ""
+  function _bakeKeyFor(v) {
+    // everything the STATIC half depends on. `time` is deliberately absent —
+    // that is the wobble, and it only moves leaves.
+    return [root._builtKey, v.yaw, v.pitch, v.art, v.w, v.h, v.originX, v.originY,
+            v.showCase, v.lamp, root.reveal, root.transparent, root.solidObject,
+            String(root.bgColor), JSON.stringify(v.palette), JSON.stringify(v.sun)].join("|")
+  }
+
   function _encode() {
     if (!root.skeleton) { imgA.source = ""; imgB.source = ""; return }
     var _t0 = Date.now()
-    var dl = Paint.build(root.skeleton, root._view())
+    var v = root._view()
+    var dl = Paint.build(root.skeleton, v)
     root.hitAreas = dl.hitAreas || []
+    var key = root._bakeKeyFor(v)
     var url
     if (root.transparent) {
-      url = Raster.toPngUrl(Paint, dl.staticOps.concat(dl.leafOps),
-        root.artW, root.artH, root.reveal, root.solidObject)
+      if (!root._bake || key !== root._bakeKey) {
+        root._bake = Raster.bakeRGBA(Paint, dl.staticOps,
+          root.artW, root.artH, root.reveal, root.solidObject)
+        root._bakeKey = key
+      }
+      url = Raster.overPngUrl(Paint, dl.leafOps,
+        root.artW, root.artH, root._bake, root.solidObject, root.reveal)
     } else {
       var bg = [Math.round(root.bgColor.r * 255), Math.round(root.bgColor.g * 255), Math.round(root.bgColor.b * 255)]
-      url = Raster.toUrl(Paint, dl.staticOps.concat(dl.leafOps),
-        root.artW, root.artH, bg, root.reveal)
+      if (!root._bake || key !== root._bakeKey) {
+        root._bake = Raster.bake(Paint, dl.staticOps, root.artW, root.artH, bg, root.reveal)
+        root._bakeKey = key
+      }
+      url = Raster.overUrl(Paint, dl.leafOps, root.artW, root.artH, root._bake, root.reveal)
     }
     // hand the URL to whichever buffer is currently hidden; it flips visible
     // once decoded, so there is always a finished frame on screen

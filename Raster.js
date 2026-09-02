@@ -25,23 +25,42 @@ function _shader(Paint, op) {
 
 // rasterise ops into an rgb Uint8-ish array (length w*h*3), top-down.
 // bg: [r,g,b]. reveal 0..1 clips to the bottom fraction (grow-in).
-function rasterise(Paint, ops, w, h, bg, reveal) {
+// Rasterise `ops` into an RGB buffer.
+//
+// `base` (optional) is a {rgb, zbuf} from an earlier pass to paint ON TOP of,
+// which is how the two-layer path works: the trunk, pot and soil are drawn once
+// and only the foliage is redrawn on the wobble tick. The op list is already
+// emitted static-first, so painting the leaves onto a copy of the static buffer
+// is exactly the single pass — provided the Z-BUFFER comes along too. That part
+// is not optional: about a third of the leaf ops are depth-tested twigs that
+// occlude against the trunk, and handing them a fresh z-buffer silently loses
+// it (measured: 8 wrong pixels, up to 75 levels off, on one seed alone).
+//
+// Pass `keepZ` to get {rgb, zbuf} back instead of just the buffer, so the
+// caller can cache a layer.
+function rasterise(Paint, ops, w, h, bg, reveal, base, keepZ) {
   w = Math.max(1, w | 0); h = Math.max(1, h | 0)
   if (reveal === undefined) reveal = 1
   var cut = reveal >= 1 ? 0 : Math.floor((1 - Math.max(0, reveal)) * h)
-  var buf = new Array(w * h * 3)
-  for (var p = 0; p < w * h; p++) {
-    var lit = ((p / w) | 0) >= cut
-    buf[p * 3] = lit ? bg[0] : 0
-    buf[p * 3 + 1] = lit ? bg[1] : 0
-    buf[p * 3 + 2] = lit ? bg[2] : 0
+  var buf, zbuf, p, q
+  if (base) {
+    buf = base.rgb.slice()
+    zbuf = base.zbuf.slice()
+  } else {
+    buf = new Array(w * h * 3)
+    for (p = 0; p < w * h; p++) {
+      var lit = ((p / w) | 0) >= cut
+      buf[p * 3] = lit ? bg[0] : 0
+      buf[p * 3 + 1] = lit ? bg[1] : 0
+      buf[p * 3 + 2] = lit ? bg[2] : 0
+    }
+    // Depth buffer for the ops that make up the solid body of the tree (see the
+    // note in Paint.js). Ops without `depth` paint exactly as before AND clear
+    // the depth under themselves, so a pot wall or a foliage mass still covers
+    // whatever the painter order says it covers.
+    zbuf = new Array(w * h)
+    for (q = 0; q < w * h; q++) zbuf[q] = -Infinity
   }
-  // Depth buffer for the ops that make up the solid body of the tree (see the
-  // note in Paint.js). Ops without `depth` paint exactly as before AND clear
-  // the depth under themselves, so a pot wall or a foliage mass still covers
-  // whatever the painter order says it covers.
-  var zbuf = new Array(w * h)
-  for (var q = 0; q < w * h; q++) zbuf[q] = -Infinity
   for (var o = 0; o < ops.length; o++) {
     var op = ops[o]
     var bb = Paint.bboxOf(op)
@@ -67,7 +86,7 @@ function rasterise(Paint, ops, w, h, bg, reveal) {
       }
     }
   }
-  return buf
+  return keepZ ? { rgb: buf, zbuf: zbuf } : buf
 }
 
 var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -121,14 +140,20 @@ function toUrl(Paint, ops, w, h, bg, reveal) {
 // rasterise ops into an rgba array (length w*h*4). Untouched pixels stay fully
 // transparent; a shader's optional 4th channel sets per-op translucency (the
 // glass panes). reveal 0..1 clips to the bottom fraction (grow-in).
-function rasteriseRGBA(Paint, ops, w, h, reveal, opaque) {
+function rasteriseRGBA(Paint, ops, w, h, reveal, opaque, base, keepZ) {
   w = Math.max(1, w | 0); h = Math.max(1, h | 0)
   if (reveal === undefined) reveal = 1
   var cut = reveal >= 1 ? 0 : Math.floor((1 - Math.max(0, reveal)) * h)
-  var buf = new Array(w * h * 4)
-  for (var p = 0; p < w * h * 4; p++) buf[p] = 0
-  var zbuf = new Array(w * h)
-  for (var q = 0; q < w * h; q++) zbuf[q] = -Infinity
+  var buf, zbuf, p, q
+  if (base) {
+    buf = base.rgb.slice()
+    zbuf = base.zbuf.slice()
+  } else {
+    buf = new Array(w * h * 4)
+    for (p = 0; p < w * h * 4; p++) buf[p] = 0
+    zbuf = new Array(w * h)
+    for (q = 0; q < w * h; q++) zbuf[q] = -Infinity
+  }
   for (var o = 0; o < ops.length; o++) {
     var op = ops[o]
     var bb = Paint.bboxOf(op)
@@ -167,7 +192,7 @@ function rasteriseRGBA(Paint, ops, w, h, reveal, opaque) {
       }
     }
   }
-  return buf
+  return keepZ ? { rgb: buf, zbuf: zbuf } : buf
 }
 
 // CRC-32 (PNG) — tiny on-the-fly table
@@ -244,6 +269,25 @@ function pngUrl(rgba, w, h) {
 }
 
 // convenience: ops -> transparent png data url
+// ---- two-layer entry points ------------------------------------------------
+// bake() draws the slow, unchanging half (pot, soil, trunk, thick branches) and
+// hands back the buffer AND its z-buffer. overUrl() paints the foliage onto a
+// copy of that and encodes. Cache the bake, call overUrl on every wobble.
+function bake(Paint, ops, w, h, bg, reveal) {
+  return rasterise(Paint, ops, w, h, bg, reveal, null, true)
+}
+function bakeRGBA(Paint, ops, w, h, reveal, opaque) {
+  return rasteriseRGBA(Paint, ops, w, h, reveal, opaque, null, true)
+}
+// `reveal` still has to be passed: it clips to the bottom fraction during the
+// grow-in, and that clip applies to the foliage exactly as it does to the wood.
+function overUrl(Paint, ops, w, h, base, reveal) {
+  return bmpUrl(rasterise(Paint, ops, w, h, null, reveal, base, false), w, h)
+}
+function overPngUrl(Paint, ops, w, h, base, opaque, reveal) {
+  return pngUrl(rasteriseRGBA(Paint, ops, w, h, reveal, opaque, base, false), w, h)
+}
+
 function toPngUrl(Paint, ops, w, h, reveal, opaque) {
   return pngUrl(rasteriseRGBA(Paint, ops, w, h, reveal, opaque), w, h)
 }
