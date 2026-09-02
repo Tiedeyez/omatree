@@ -31,6 +31,7 @@ const PITCH = num('pitch', CASE ? 0.34 : DESK ? 0.12 : 0.26)
 const HOUR = clamp(num('hour', 13), 0, 24)
 const THIRST = clamp(num('thirst', 0), 0, 1)
 const HEALTH = clamp(num('health', 1), 0, 1)
+const PRUNE = num('prune', 0) | 0
 const LAMP = flag('lamp')
 const LIGHT = flag('light')
 const GALLERY = num('gallery', 0) | 0
@@ -69,10 +70,28 @@ const PAL = {
 }
 const BG = LIGHT ? [232, 233, 228] : [15, 17, 20]
 
+// --prune N cuts the N largest foliage clumps, so a before/after pair can show
+// what a trim actually takes off. The clump ids only exist once the draw list
+// has been built, so this grows the tree, reads the ids back off the hit areas,
+// then regrows with those clumps pruned — the same round trip the panel makes
+// when you cut by hand.
+function pruneMapFor (gen, mat, age, yaw, hour) {
+  if (PRUNE <= 0) return {}
+  const bare = P.Grow.grow(gen, { maturity: mat, ageYears: age, thirst: THIRST, health: HEALTH, prune: {}, origin: 'cutting' })
+  const mz = P.Paint.measureStable(bare, { art: ART, showCase: CASE, yaw, pitch: PITCH })
+  const V = { yaw, pitch: PITCH, art: ART, w: mz.w, h: mz.h, originX: mz.originX, originY: mz.originY, sun: P.Paint.sunForTime(Math.floor(hour), 0), lamp: LAMP, palette: PAL, showCase: CASE }
+  const areas = (P.Paint.build(bare, V).hitAreas || []).slice()
+  areas.sort((a, b) => (b.w * b.h) - (a.w * a.h))
+  const map = {}
+  for (let i = 0; i < Math.min(PRUNE, areas.length); i++) map[areas[i].id] = 1
+  return map
+}
+
 function renderOne (gen, mat, age, yaw, hour, time) {
   if (GENUS) gen.genus = GENUS
   if (STYLE) gen.style = STYLE
-  const sk = P.Grow.grow(gen, { maturity: mat, ageYears: age, thirst: THIRST, health: HEALTH, prune: {}, origin: 'cutting' })
+  const prune = pruneMapFor(gen, mat, age, yaw, hour)
+  const sk = P.Grow.grow(gen, { maturity: mat, ageYears: age, thirst: THIRST, health: HEALTH, prune: prune, origin: 'cutting' })
   const mz = P.Paint.measureStable(sk, { art: ART, showCase: CASE, yaw, pitch: PITCH })
   const V = { yaw, pitch: PITCH, art: ART, w: mz.w, h: mz.h, originX: mz.originX, originY: mz.originY, sun: P.Paint.sunForTime(Math.floor(hour), Math.round((hour % 1) * 60)), lamp: LAMP, palette: PAL, time, showCase: CASE }
   const dl = P.Paint.build(sk, V)
