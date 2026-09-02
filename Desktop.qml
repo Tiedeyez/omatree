@@ -251,7 +251,15 @@ PanelWindow {
 
   function publishCompanionBridge() {
     if (!root.ready || !root.showTree || !isFinite(root.bedW) || !isFinite(root.bedH)) return
-    var baseX = bed.x
+    // bed.x/y are window-local, but the bridge publishes SCREEN coordinates for
+    // something else to walk on. The y was already being converted; the x never
+    // was, so a right-anchored tile sitting at x=3230 published its footprint at
+    // x=41 — the far side of the screen. The window is bottom-anchored and
+    // pinned to one edge, so its origin follows from the margins and its size.
+    var winLeft = root.horizontalAnchor === "right"
+      ? Screen.width - root.margins.right - root.implicitWidth
+      : root.margins.left
+    var baseX = winLeft + bed.x
     var baseY = Screen.height - root.implicitHeight + bed.y
     var floor = baseY + bed.height
     var center = baseX + bed.width / 2

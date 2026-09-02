@@ -515,16 +515,36 @@ Item {
       // The beams are longer than the view so they can cross it completely;
       // clipping keeps them on the tree instead of raking over the readouts.
       clip: true
+      // Water comes from above the canopy, falls THROUGH the tree, and lands —
+      // each drop finishes on the soil with a small ring rather than dissolving
+      // in mid-air. Staggered arrivals so it reads as a pour and not a pulse.
       function water() {
+        var soil = fx.height * 0.74
         for (var i = 0; i < dropPool.count; i++) {
           var d = dropPool.itemAt(i)
-          if (d && !d.live) d.fire(width * (0.28 + 0.44 * Math.random()), height * (0.08 + 0.16 * Math.random()))
+          if (!d || d.live) continue
+          var px = fx.width * (0.24 + 0.52 * Math.random())
+          // the soil mounds in the middle, so drops at the edges land lower
+          var edge = Math.abs(px / fx.width - 0.5) * 2
+          d.fire(px, -10 - Math.random() * 34, soil + edge * fx.height * 0.04,
+                 i * 42 + Math.random() * 55)
         }
       }
+      // Feeding is two halves, and the second is the point: granules land on the
+      // soil, then the tree TAKES THEM UP — motes rising out of the soil, climbing
+      // the trunk, fading out into the canopy.
       function feed() {
-        for (var i = 0; i < glintPool.count; i++) {
-          var g = glintPool.itemAt(i)
-          if (g && !g.live) g.fire(width * (0.34 + 0.32 * Math.random()), height * (0.78 + 0.14 * Math.random()))
+        var soil = fx.height * 0.76
+        for (var i = 0; i < grainPool.count; i++) {
+          var g = grainPool.itemAt(i)
+          if (!g || g.live) continue
+          var gx = fx.width * (0.33 + 0.34 * Math.random())
+          g.fire(gx, soil - 30 - Math.random() * 18, soil + Math.random() * 6, i * 38)
+        }
+        for (var j = 0; j < glintPool.count; j++) {
+          var q = glintPool.itemAt(j)
+          if (!q || q.live) continue
+          q.fire(fx.width * (0.40 + 0.20 * Math.random()), soil, 340 + j * 66)
         }
       }
       function milestone() { washAnim.restart() }
@@ -559,6 +579,45 @@ Item {
           m.fire(fx.width / 2 + px * t * fx.width * 1.2 - dx * span * 0.42,
                  fx.height / 2 + py * t * fx.height * 1.2 - dy * span * 0.42,
                  dx * span * 0.9, dy * span * 0.9, Math.random() * 420)
+        }
+      }
+
+      // ---- the grow lamp's own glow --------------------------------
+      // Not a flash on a gesture: while the lamp is ON there is light in the air
+      // over the tree, and it hangs directly above. A soft warm pool with real
+      // presence — brightest at the top of the frame, gone before the pot — plus
+      // a brighter bloom where the lamp head itself sits. Rectangle gradients are
+      // linear only and Quickshell has no working Canvas, so the round falloff of
+      // the bloom is four nested capsules of decreasing alpha rather than a real
+      // radial gradient. At this size the banding is not visible.
+      Item {
+        id: lampGlow
+        anchors.fill: parent
+        opacity: root.lampLit ? 1 : 0
+        visible: opacity > 0.01
+        Behavior on opacity { NumberAnimation { duration: 620; easing.type: Easing.InOutQuad } }
+
+        Rectangle {
+          width: parent.width
+          height: parent.height * 0.74
+          gradient: Gradient {
+            GradientStop { position: 0.0;  color: Qt.rgba(1.0, 0.90, 0.68, 0.26) }
+            GradientStop { position: 0.34; color: Qt.rgba(1.0, 0.89, 0.66, 0.13) }
+            GradientStop { position: 1.0;  color: Qt.rgba(1.0, 0.88, 0.64, 0.0) }
+          }
+        }
+        Repeater {
+          model: 4
+          Rectangle {
+            required property int index
+            readonly property real k: (index + 1) / 4
+            width: lampGlow.width * (0.22 + 0.34 * k)
+            height: width * 0.52
+            x: (lampGlow.width - width) / 2
+            y: -height * 0.44
+            radius: height / 2
+            color: Qt.rgba(1.0, 0.93, 0.74, 0.14 * (1.05 - k))
+          }
         }
       }
 
@@ -647,39 +706,119 @@ Item {
         }
       }
 
+      // a falling drop, and the ring it leaves where it lands
       Repeater {
         id: dropPool
-        model: 10
-        Rectangle {
+        model: 22
+        Item {
           id: drop
           property bool live: false
-          width: 2; height: 5; radius: 1; visible: live; opacity: 0
-          color: root.isLight ? "#3a6ea8" : "#8fc7ff"
-          function fire(px, py) { live = true; x = px; y = py; dAnim.restart() }
+          property real _landY: 0
+          width: 3; height: 8
+          visible: live
+          function fire(px, py, landY, delay) {
+            live = true
+            x = px; y = py
+            drop._landY = landY
+            streak.opacity = 0
+            splash.opacity = 0
+            dropHold.duration = delay
+            fallAnim.duration = 500 + Math.random() * 280
+            dAnim.restart()
+          }
+          Rectangle {
+            id: streak
+            width: 2; height: parent.height; radius: 1
+            color: root.isLight ? "#3a6ea8" : "#8fc7ff"
+            opacity: 0
+            antialiasing: false
+          }
+          Rectangle {
+            id: splash
+            x: -4; y: parent.height - 3
+            width: 11; height: 4; radius: 2
+            color: "transparent"
+            border.width: 1
+            border.color: root.isLight ? "#3a6ea8" : "#a8d8ff"
+            opacity: 0
+            transformOrigin: Item.Center
+          }
           SequentialAnimation {
             id: dAnim
+            PauseAnimation { id: dropHold; duration: 0 }
             ParallelAnimation {
-              NumberAnimation { target: drop; property: "opacity"; from: 0.85; to: 0; duration: 640 + Math.random() * 260; easing.type: Easing.InQuad }
-              NumberAnimation { target: drop; property: "y"; to: drop.y + 44 + Math.random() * 28; duration: 780; easing.type: Easing.InQuad }
+              NumberAnimation { id: fallAnim; target: drop; property: "y"; to: drop._landY; duration: 600; easing.type: Easing.InQuad }
+              NumberAnimation { target: streak; property: "opacity"; to: 0.9; duration: 110 }
+            }
+            ScriptAction { script: streak.opacity = 0 }
+            ParallelAnimation {
+              NumberAnimation { target: splash; property: "opacity"; from: 0.85; to: 0; duration: 380; easing.type: Easing.OutQuad }
+              NumberAnimation { target: splash; property: "scale"; from: 0.4; to: 1.7; duration: 380; easing.type: Easing.OutQuad }
             }
             ScriptAction { script: drop.live = false }
           }
         }
       }
+      // feed, part one: granules dropped onto the soil
+      Repeater {
+        id: grainPool
+        model: 12
+        Rectangle {
+          id: grain
+          property bool live: false
+          property real _ty: 0
+          width: 2; height: 2
+          visible: live; opacity: 0
+          color: Qt.rgba(root.tint.r * 0.62 + 0.24, root.tint.g * 0.62 + 0.20, root.tint.b * 0.44 + 0.12, 1)
+          antialiasing: false
+          function fire(px, py, ty, delay) {
+            live = true; x = px; y = py; grain._ty = ty
+            grainHold.duration = delay
+            grainAnim.restart()
+          }
+          SequentialAnimation {
+            id: grainAnim
+            PauseAnimation { id: grainHold; duration: 0 }
+            ParallelAnimation {
+              NumberAnimation { target: grain; property: "y"; to: grain._ty; duration: 300; easing.type: Easing.InQuad }
+              NumberAnimation { target: grain; property: "opacity"; from: 0; to: 0.95; duration: 120 }
+            }
+            NumberAnimation { target: grain; property: "opacity"; to: 0; duration: 430; easing.type: Easing.InQuad }
+            ScriptAction { script: grain.live = false }
+          }
+        }
+      }
+      // feed, part two: the uptake — out of the soil and up into the canopy
       Repeater {
         id: glintPool
-        model: 8
+        model: 14
         Rectangle {
           id: glint
           property bool live: false
-          width: 2; height: 2; radius: 1; visible: live; opacity: 0
+          property real _tx: 0
+          property real _ty: 0
+          width: 2; height: 2; radius: 1
+          visible: live; opacity: 0
           color: root.tint
-          function fire(px, py) { live = true; x = px; y = py; gAnim.restart() }
+          antialiasing: false
+          function fire(px, py, delay) {
+            live = true; x = px; y = py
+            glint._tx = px + (Math.random() - 0.5) * 28
+            glint._ty = py - fx.height * (0.34 + 0.26 * Math.random())
+            glintHold.duration = delay
+            gAnim.restart()
+          }
           SequentialAnimation {
             id: gAnim
+            PauseAnimation { id: glintHold; duration: 0 }
             ParallelAnimation {
-              NumberAnimation { target: glint; property: "opacity"; from: 0.9; to: 0; duration: 700; easing.type: Easing.OutQuad }
-              NumberAnimation { target: glint; property: "y"; to: glint.y - 9 - Math.random() * 6; duration: 700; easing.type: Easing.OutQuad }
+              NumberAnimation { target: glint; property: "y"; to: glint._ty; duration: 1150; easing.type: Easing.OutQuad }
+              NumberAnimation { target: glint; property: "x"; to: glint._tx; duration: 1150; easing.type: Easing.InOutSine }
+              SequentialAnimation {
+                NumberAnimation { target: glint; property: "opacity"; from: 0; to: 0.95; duration: 220 }
+                PauseAnimation { duration: 500 }
+                NumberAnimation { target: glint; property: "opacity"; to: 0; duration: 430; easing.type: Easing.InQuad }
+              }
             }
             ScriptAction { script: glint.live = false }
           }
@@ -780,42 +919,6 @@ Item {
         }
       }
 
-      Item {
-        id: leaves
-        anchors.fill: parent
-        function burst(px, py, col) {
-          var n = 0
-          for (var j = 0; j < leafPool.count && n < 7; j++) {
-            var p = leafPool.itemAt(j)
-            if (p && !p.live) { p.fire(px + (Math.random() - 0.5) * 12, py + (Math.random() - 0.5) * 9, col); n++ }
-          }
-        }
-        Repeater {
-          id: leafPool
-          model: 16
-          Rectangle {
-            id: leaf
-            property bool live: false
-            width: 3; height: 3; radius: 1; visible: live; opacity: 0
-            color: "#6c6"
-            function fire(px, py, col) {
-              live = true; x = px; y = py; rotation = Math.random() * 90
-              if (col) color = Qt.rgba(col.r, col.g, col.b, 1)
-              anim.restart()
-            }
-            SequentialAnimation {
-              id: anim
-              ParallelAnimation {
-                NumberAnimation { target: leaf; property: "opacity"; from: 0.95; to: 0; duration: 950 + Math.random() * 500; easing.type: Easing.InQuad }
-                NumberAnimation { target: leaf; property: "y"; to: leaf.y + 26 + Math.random() * 20; duration: 1150; easing.type: Easing.InQuad }
-                NumberAnimation { target: leaf; property: "x"; to: leaf.x + (Math.random() - 0.5) * 24; duration: 1150; easing.type: Easing.InOutSine }
-                NumberAnimation { target: leaf; property: "rotation"; to: leaf.rotation + (Math.random() - 0.5) * 240; duration: 1150 }
-              }
-              ScriptAction { script: leaf.live = false }
-            }
-          }
-        }
-      }
 
       Item {
         id: snip
@@ -849,6 +952,82 @@ Item {
           root.pruneRequested(r.id)
           leaves.burst((r.x + r.w / 2) * root.artScale, (r.y + r.h / 2) * root.artScale, root.palette.frond)
           snipAnim.restart()
+        }
+      }
+    }
+
+    Item {
+      id: leaves
+      anchors.fill: parent
+      // A cut throws more than a few specks, and what is cut off LEAVES: the
+      // clippings tumble the whole way down and out of the frame instead of
+      // dissolving in mid-air over the tree. A short bright ring marks the
+      // cut itself so the eye knows where the loss happened.
+      function burst(px, py, col) {
+        cutRing.flash(px, py)
+        var n = 0
+        for (var j = 0; j < leafPool.count && n < 13; j++) {
+          var p = leafPool.itemAt(j)
+          if (p && !p.live) {
+            p.fire(px + (Math.random() - 0.5) * 17, py + (Math.random() - 0.5) * 12, col, n * 22)
+            n++
+          }
+        }
+      }
+      Rectangle {
+        id: cutRing
+        width: 16; height: 16; radius: 8
+        color: "transparent"
+        border.width: 1
+        border.color: root.tint
+        opacity: 0
+        visible: opacity > 0.01
+        transformOrigin: Item.Center
+        function flash(px, py) { x = px - 8; y = py - 8; ringAnim.restart() }
+        ParallelAnimation {
+          id: ringAnim
+          NumberAnimation { target: cutRing; property: "opacity"; from: 0.9; to: 0; duration: 360; easing.type: Easing.OutQuad }
+          NumberAnimation { target: cutRing; property: "scale"; from: 0.35; to: 1.5; duration: 360; easing.type: Easing.OutQuad }
+        }
+      }
+      Repeater {
+        id: leafPool
+        model: 22
+        Rectangle {
+          id: leaf
+          property bool live: false
+          property real _tx: 0
+          property real _ty: 0
+          property real _tr: 0
+          width: 3; height: 3; radius: 1
+          visible: live; opacity: 0
+          color: "#6c6"
+          antialiasing: false
+          function fire(px, py, col, delay) {
+            live = true; x = px; y = py
+            rotation = Math.random() * 90
+            if (col) color = Qt.rgba(col.r, col.g, col.b, 1)
+            leaf._ty = py + leaves.height * (0.55 + 0.45 * Math.random())
+            leaf._tx = px + (Math.random() - 0.5) * 48
+            leaf._tr = leaf.rotation + (Math.random() - 0.5) * 540
+            leafHold.duration = delay || 0
+            anim.restart()
+          }
+          SequentialAnimation {
+            id: anim
+            PauseAnimation { id: leafHold; duration: 0 }
+            ParallelAnimation {
+              NumberAnimation { target: leaf; property: "y"; to: leaf._ty; duration: 1450; easing.type: Easing.InQuad }
+              NumberAnimation { target: leaf; property: "x"; to: leaf._tx; duration: 1450; easing.type: Easing.InOutSine }
+              NumberAnimation { target: leaf; property: "rotation"; to: leaf._tr; duration: 1450 }
+              SequentialAnimation {
+                NumberAnimation { target: leaf; property: "opacity"; from: 0; to: 0.95; duration: 90 }
+                PauseAnimation { duration: 780 }
+                NumberAnimation { target: leaf; property: "opacity"; to: 0; duration: 580; easing.type: Easing.InQuad }
+              }
+            }
+            ScriptAction { script: leaf.live = false }
+          }
         }
       }
     }
