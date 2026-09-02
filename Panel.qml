@@ -255,10 +255,10 @@ Panel {
 
         // a gentle settle when the panel opens
         opacity: root.opened ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutSine } }
         transform: Translate {
           y: root.opened ? 0 : Style.space(8)
-          Behavior on y { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+          Behavior on y { NumberAnimation { duration: 340; easing.type: Easing.OutSine } }
         }
 
         // ---- the tree, sitting in the panel (no frame) -----------------
@@ -272,7 +272,7 @@ Panel {
             ? Math.max(Style.space(140),
                 Math.min(bonsaiView.implicitHeight + strip.height + Style.space(18), _screenH * 0.52))
             : Style.space(190)
-          Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+          Behavior on height { NumberAnimation { duration: 540; easing.type: Easing.OutSine } }
           clip: true
 
           // top strip: identity + light toggle, or the trim controls
@@ -589,9 +589,9 @@ Panel {
                 border.width: 1
                 border.color: Qt.alpha(root.accent, card.lit ? 0.6 : 0.25)
                 scale: card.lit ? 1.015 : 1
-                Behavior on color { ColorAnimation { duration: 130 } }
-                Behavior on border.color { ColorAnimation { duration: 130 } }
-                Behavior on scale { NumberAnimation { duration: 130; easing.type: Easing.OutCubic } }
+                Behavior on color { ColorAnimation { duration: 210 } }
+                Behavior on border.color { ColorAnimation { duration: 210 } }
+                Behavior on scale { NumberAnimation { duration: 210; easing.type: Easing.OutSine } }
 
                 // drawn mark: seed = filled dot; cutting = angled stem + node
                 Item {
@@ -805,8 +805,8 @@ Panel {
                   radius: parent.radius
                   width: Math.max(parent.height, parent.width * meterRow.wellbeing)
                   color: meterRow.urgent ? root.warn : root.accent
-                  Behavior on width { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
-                  Behavior on color { ColorAnimation { duration: 220 } }
+                  Behavior on width { NumberAnimation { duration: 620; easing.type: Easing.InOutSine } }
+                  Behavior on color { ColorAnimation { duration: 320 } }
                   SequentialAnimation on opacity {
                     running: meterRow.urgent
                     loops: Animation.Infinite
@@ -868,7 +868,7 @@ Panel {
                 border.width: 1
                 border.color: Qt.alpha(root.accent, lit ? 0.55 : 0.28)
                 scale: pillHover.pressed ? 0.93 : 1
-                Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutQuad } }
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutSine } }
 
                 Text {
                   id: pillText
