@@ -93,13 +93,13 @@ Panel {
     if (!root.planted) return root.bonsaiService.seedAvailable
       ? ["berrySeed", "seed", "cutting"] : ["seed", "cutting"]
     if (settingsCol.open) {
-      var s = ["settings", "desktop"]
+      var s = ["settings"]
       if (root.bonsaiService.prune && Object.keys(root.bonsaiService.prune).length > 0)
         s.push("growback")
       s.push("startover")
       return s
     }
-    return ["tree", "water", "lamp", "feed", "prune", "settings"]
+    return ["tree", "water", "lamp", "feed", "prune", "desktop", "settings"]
   }
 
   function kbWake() {
@@ -907,6 +907,92 @@ Panel {
           }
         }
 
+        // ---- set me out ------------------------------------------
+        // Putting the tree on the desktop is something you do to live with it,
+        // not a setting you configure once — so it sits in the panel proper,
+        // alongside the care actions, rather than behind the settings link.
+        Column {
+          id: desktopToggle
+          width: parent.width
+          // Same gate as the rest of the panel body: settings swaps the page
+          // out, and there is nothing to set out before anything is planted.
+          visible: !settingsCol.open && root.planted && !root.pruning && root.ready
+          spacing: Style.space(4)
+          readonly property bool on: root.ready && root.bonsaiService.desktopEnabled
+          readonly property bool lit: deskMa.containsMouse
+            || (root.kbActive && root.kbFocus === "desktop")
+
+          Item {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: desktopRow.width + Style.space(16)
+            height: desktopRow.height + Style.space(10)
+
+            Row {
+              id: desktopRow
+              anchors.centerIn: parent
+              spacing: Style.space(7)
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "SET ME OUT"
+                color: (desktopToggle.on || desktopToggle.lit)
+                  ? root.accent : Qt.alpha(root.fg, 0.55)
+                font.family: root.uiFont
+                font.pixelSize: root.capSize
+                font.letterSpacing: 1.5
+                renderType: Text.QtRendering
+              }
+              Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(22); height: Style.space(11)
+                radius: height / 2
+                color: desktopToggle.on ? Qt.alpha(root.accent, 0.28) : Qt.alpha(root.fg, 0.1)
+                border.width: 1
+                border.color: (desktopToggle.on || desktopToggle.lit)
+                  ? root.accent : Qt.alpha(root.fg, 0.35)
+                Behavior on color { ColorAnimation { duration: 160 } }
+                Rectangle {
+                  anchors.verticalCenter: parent.verticalCenter
+                  x: desktopToggle.on ? parent.width - width - 2 : 2
+                  width: Style.space(7); height: Style.space(7); radius: width / 2
+                  color: desktopToggle.on ? root.accent : Qt.alpha(root.fg, 0.5)
+                  Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                  Behavior on color { ColorAnimation { duration: 160 } }
+                }
+              }
+            }
+
+            MouseArea {
+              id: deskMa
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              enabled: root.ready
+              onContainsMouseChanged: if (containsMouse && root.kbActive) root.kbFocus = "desktop"
+              onClicked: {
+                var putOut = !root.bonsaiService.desktopEnabled
+                root.bonsaiService.setDesktop(putOut)
+                root.flashNote(putOut ? "out on your desktop" : "home in the bar")
+              }
+            }
+          }
+
+          // The long explainer belonged to the settings page. Out here the
+          // toggle is read at a glance, so it only says where the tree is.
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: desktopToggle.on ? "out in your lower-right corner"
+                                   : "or set me out on your desktop"
+            color: Qt.alpha(root.fg, 0.45)
+            font.family: root.uiFont
+            font.pixelSize: root.capSize
+            font.italic: true
+            wrapMode: Text.Wrap
+            renderType: Text.QtRendering
+          }
+        }
+
         // ---- footer toggle ---------------------------------------
         Text {
           anchors.horizontalCenter: parent.horizontalCenter
@@ -950,86 +1036,6 @@ Panel {
             renderType: Text.QtRendering
           }
 
-          // Put a living copy of the tree in the lower-right corner of the
-          // desktop, or bring it back to the bar. One switch, its own line of
-          // plain-language state underneath so it's never a mystery toggle.
-          Column {
-            id: desktopToggle
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Style.space(4)
-            readonly property bool on: root.ready && root.bonsaiService.desktopEnabled
-            readonly property bool lit: deskMa.containsMouse
-              || (root.kbActive && root.kbFocus === "desktop")
-
-            Item {
-              anchors.horizontalCenter: parent.horizontalCenter
-              width: desktopRow.width + Style.space(16)
-              height: desktopRow.height + Style.space(10)
-
-              Row {
-                id: desktopRow
-                anchors.centerIn: parent
-                spacing: Style.space(7)
-                Text {
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "SET ME OUT"
-                  color: (desktopToggle.on || desktopToggle.lit)
-                    ? root.accent : Qt.alpha(root.fg, 0.55)
-                  font.family: root.uiFont
-                  font.pixelSize: root.capSize
-                  font.letterSpacing: 1.5
-                  renderType: Text.QtRendering
-                }
-                Rectangle {
-                  anchors.verticalCenter: parent.verticalCenter
-                  width: Style.space(22); height: Style.space(11)
-                  radius: height / 2
-                  color: desktopToggle.on ? Qt.alpha(root.accent, 0.28) : Qt.alpha(root.fg, 0.1)
-                  border.width: 1
-                  border.color: (desktopToggle.on || desktopToggle.lit)
-                    ? root.accent : Qt.alpha(root.fg, 0.35)
-                  Behavior on color { ColorAnimation { duration: 160 } }
-                  Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    x: desktopToggle.on ? parent.width - width - 2 : 2
-                    width: Style.space(7); height: Style.space(7); radius: width / 2
-                    color: desktopToggle.on ? root.accent : Qt.alpha(root.fg, 0.5)
-                    Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                    Behavior on color { ColorAnimation { duration: 160 } }
-                  }
-                }
-              }
-
-              MouseArea {
-                id: deskMa
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                enabled: root.ready
-                onContainsMouseChanged: if (containsMouse && root.kbActive) root.kbFocus = "desktop"
-                onClicked: {
-                  var putOut = !root.bonsaiService.desktopEnabled
-                  root.bonsaiService.setDesktop(putOut)
-                  root.flashNote(putOut ? "out on your desktop" : "home in the bar")
-                }
-              }
-            }
-
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              width: settingsCol.width
-              horizontalAlignment: Text.AlignHCenter
-              text: desktopToggle.on
-                ? "I am out in the lower-right corner of your screen — switch off and I will come home"
-                : "set me out on your desktop, in the lower-right corner"
-              color: Qt.alpha(root.fg, 0.45)
-              font.family: root.uiFont
-              font.pixelSize: root.capSize
-              font.italic: true
-              wrapMode: Text.Wrap
-              renderType: Text.QtRendering
-            }
-          }
           Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.space(10)
