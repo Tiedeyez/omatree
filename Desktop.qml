@@ -32,18 +32,25 @@ PanelWindow {
 
   // The window hugs the ornament: sized to the scaled tree bounding box, so
   // there is minimal transparent click-through surface on the desktop.
-  readonly property real maxDesktopH: Math.max(150, Screen.height * 0.48)
-  readonly property real maxDesktopW: Math.max(120, Screen.width * 0.28)
-  readonly property real targetScale: 1.48
+  // Caps only — they exist to stop an ancient tree taking over the screen, and
+  // they are NOT the footprint. Sizing the stage to a fraction of the screen is
+  // what put a ~990x700 input-blocking rectangle on a 3440x1440 desktop, most of
+  // it empty, swallowing clicks and drags meant for the window behind it.
+  readonly property real maxDesktopH: Math.max(150, Screen.height * 0.30)
+  readonly property real maxDesktopW: Math.max(120, Screen.width * 0.14)
+  // 1:1. artScale already gives a clean 2x, so the ornament is drawn at exactly
+  // the size it was rendered and the pixel grid stays exact. Making the tree
+  // smaller is done by rendering FEWER art pixels (the Bonsai's artUnits below),
+  // never by scaling the finished picture down — a fractional downscale is what
+  // turns crisp pixel art into mush.
+  readonly property real targetScale: 1.0
   readonly property real naturalW: Math.max(1, tree.artW * tree.artScale)
   readonly property real naturalH: Math.max(1, tree.artH * tree.artScale)
   readonly property real desktopScale: Math.min(
     targetScale, maxDesktopW / naturalW, maxDesktopH / naturalH)
-  // Keep the desktop stage stable as the tree grows. The artwork can become
-  // larger or smaller inside this fixed turntable footprint without moving
-  // its screen position or changing the click target.
-  readonly property real bedH: maxDesktopH
-  readonly property real bedW: maxDesktopW
+  // The bed is the tree's own bounding box, and the bed is what takes clicks.
+  readonly property real bedH: Math.min(maxDesktopH, naturalH * desktopScale)
+  readonly property real bedW: Math.min(maxDesktopW, naturalW * desktopScale)
 
   // Headroom above the bed: the shaft the tree comes down. A layer-shell
   // surface clips its children, which is exactly what makes the descent read
@@ -136,7 +143,10 @@ PanelWindow {
       forceFront: false
       inHousing: false
       onDesktop: true
-      artUnits: 4.0
+      // Sized against the reference shot: 2.2 art-units renders ~97x123 art px,
+      // which at artScale 2 lands the ornament at ~194x246 on screen. The panel
+      // keeps its own larger art resolution; only the desktop tile shrinks.
+      artUnits: 2.2
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       scale: root.desktopScale
@@ -175,8 +185,11 @@ PanelWindow {
     // hover now also reveals the way back to its housing (below).
     Item {
       id: tapArea
-      x: -12; y: -4
-      width: bed.width + 24; height: bed.height + 8
+      // Every pixel of this is a pixel the desktop underneath cannot receive, so
+      // the grab margin stays small — enough to catch a near-miss on the canopy,
+      // not a moat around the tree.
+      x: -6; y: -3
+      width: bed.width + 12; height: bed.height + 6
       MouseArea {
         id: tapMa
         anchors.fill: parent
