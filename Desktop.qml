@@ -24,9 +24,13 @@ PanelWindow {
   // remains bounded so it never consumes the whole desktop.
   property string horizontalAnchor: "right" // left | right
   anchors { bottom: true; right: root.horizontalAnchor === "right"; left: root.horizontalAnchor === "left" }
+  // Actually the corner. A margin proportional to the screen put the tree ~860px
+  // in from the edge of a 3440px display — sitting over usable screen instead of
+  // the dead corner it is supposed to occupy. A fixed inset keeps it tucked into
+  // the corner on any display, wide or not.
   margins {
     bottom: 0
-    right: root.horizontalAnchor === "right" ? Math.round(Screen.width * 0.25) : 0
+    right: root.horizontalAnchor === "right" ? 16 : 0
     left: root.horizontalAnchor === "left" ? 16 : 0
   }
 
