@@ -127,27 +127,17 @@ Item {
 
   // ---- time of day ---------------------------------------------------
   property var sun: Paint.sunForTime(12, 0)
-  // Where the light is coming from, in screen space, derived the same way the
-  // shaders derive it (Paint: x right, y DOWN, z toward the viewer). The sun's
-  // position comes from the machine's own clock and timezone — nothing is
-  // fetched, and nothing needs to be.
-  // A grow lamp hangs ABOVE the tree; the sun after dusk does not — sunForTime
-  // returns elevation 0 there, a dead-horizontal vector. Deriving the beams from
-  // the sun while the lamp is the thing actually lighting the tree therefore
-  // rakes them in sideways, against shading Paint is already doing from
-  // overhead. Both sides read the same lamp vector so they cannot disagree.
+  // The sun's position comes from the machine's own clock and timezone —
+  // nothing is fetched, and nothing needs to be. Paint does the shading from it
+  // (and from lampDir() when the lamp is on); the fx layer no longer needs a
+  // screen-space light vector of its own, because the light effect is glitter
+  // sitting on the canopy rather than beams raked in from an angle. lightX /
+  // lightY / rayAngle / beamTone went with the shafts.
   readonly property bool lampLit: !!(root.tree && root.tree.lamp === true)
-  readonly property real lightX: root.lampLit ? Paint.lampDir()[0]
-    : (root.sun && root.sun.dir ? root.sun.dir[0] : 0.2)
-  readonly property real lightY: root.lampLit ? Paint.lampDir()[1]
-    : (root.sun && root.sun.dir ? -root.sun.dir[1] : -0.9)
-  // Rays TRAVEL the other way: away from the light, across the tree.
-  readonly property real rayAngle: Math.atan2(-root.lightY, -root.lightX)
   readonly property bool sunUp: !(root.sun && root.sun.night)
-  // What the beams are made of. Daylight is warm, the dark is cold and thin —
+  // What the glitter is made of. Daylight is warm, the dark is cold and thin —
   // but a lit grow lamp is its own warm source, not moonlight, so it must not
   // fall through to the night tone just because the sun is down.
-  readonly property color beamTone: root.sunUp ? "#ffe9b0" : (root.lampLit ? "#ffdfae" : "#cfe2ff")
   readonly property color moteTone: root.sunUp ? "#fff3c9" : (root.lampLit ? "#ffeccb" : "#dbe8ff")
   readonly property bool litBright: root.sunUp || root.lampLit
   function refreshSun() {
@@ -581,36 +571,29 @@ Item {
       }
       function milestone() { washAnim.restart() }
 
-      // Light let in. Not a lamp being switched on and not a drawn sun — the
-      // light itself: shafts raking across the tree from wherever the sun
-      // actually is right now, with dust glittering as it drifts down the
-      // beam. After dark the same thing runs colder and quieter, because the
-      // gesture is still "some light reaches you", just less of it.
-      // ambient = the idle sparkle the tree throws off on its own, which runs at
-      // a fraction of the motes. A light() the user actually asked for always
+      // Light let in — glitter, not beams. There used to be long raked shafts
+      // crossing the whole frame at the sun's angle, with dust riding down
+      // them; the bars read as an effect laid OVER the tree rather than as
+      // light on it. Now it is only the sparkle: points catching the light all
+      // over the canopy, winking, and going out. Nothing sweeps across.
+      //
+      // ambient = the idle sparkle the tree throws off on its own, at a
+      // fraction of the count. A light() the user actually asked for always
       // plays at full strength.
       function light(ambient) {
-        var ang = root.rayAngle
-        var dx = Math.cos(ang), dy = Math.sin(ang)
-        var px = -dy, py = dx                  // across the beam
-        var span = Math.max(fx.width, fx.height) * 1.35
-        var sparkleCut = ambient === true ? 0.30 : 1.0
-        for (var b = 0; b < shaftPool.count; b++) {
-          var sh = shaftPool.itemAt(b)
-          if (!sh) continue
-          var off = (b / (shaftPool.count - 1) - 0.5) * fx.width * 1.15
-          sh.fire(fx.width / 2 + px * off - dx * span * 0.30,
-                  fx.height / 2 + py * off - dy * span * 0.30,
-                  dx * span * 0.60, dy * span * 0.60, ang, b * 55)
-        }
-        var moteBudget = Math.max(2, Math.round(motePool.count * sparkleCut))
-        for (var i = 0; i < moteBudget; i++) {
+        var budget = Math.max(3, Math.round(motePool.count * (ambient === true ? 0.30 : 1.0)))
+        var n = 0
+        for (var i = 0; i < motePool.count && n < budget; i++) {
           var m = motePool.itemAt(i)
           if (!m || m.live) continue
-          var t = Math.random() - 0.5
-          m.fire(fx.width / 2 + px * t * fx.width * 1.2 - dx * span * 0.42,
-                 fx.height / 2 + py * t * fx.height * 1.2 - dy * span * 0.42,
-                 dx * span * 0.9, dy * span * 0.9, Math.random() * 420)
+          // Gathered on the canopy rather than sprayed evenly into the empty
+          // corners: two averaged randoms bias toward the middle, and the
+          // vertical range stops above the pot.
+          var cx = (Math.random() + Math.random()) / 2
+          m.fire(fx.width * (0.08 + 0.84 * cx),
+                 fx.height * (0.05 + 0.62 * Math.random()),
+                 Math.random() * 680)
+          n++
         }
       }
 
@@ -653,51 +636,13 @@ Item {
         }
       }
 
-      // the beams: a few long, thin, low-opacity bars raked to the sun angle
-      Repeater {
-        id: shaftPool
-        model: 7
-        Rectangle {
-          id: shaft
-          required property int index
-          property bool live: false
-          readonly property color warm: root.beamTone
-          width: Math.max(fx.width, fx.height) * 1.6
-          height: 2 + (shaft.index % 3) * 2
-          visible: live; opacity: 0
-          color: shaft.warm
-          antialiasing: false
-          transformOrigin: Item.Center
-          function fire(px, py, tx, ty, ang, delay) {
-            live = true
-            x = px - width / 2; y = py - height / 2
-            rotation = ang * 180 / Math.PI
-            shaftHold.duration = delay
-            shaft._tx = x + tx; shaft._ty = y + ty
-            shaftAnim.restart()
-          }
-          property real _tx: 0
-          property real _ty: 0
-          SequentialAnimation {
-            id: shaftAnim
-            PauseAnimation { id: shaftHold; duration: 0 }
-            ParallelAnimation {
-              NumberAnimation { target: shaft; property: "x"; to: shaft._tx; duration: 1150; easing.type: Easing.InOutSine }
-              NumberAnimation { target: shaft; property: "y"; to: shaft._ty; duration: 1150; easing.type: Easing.InOutSine }
-              SequentialAnimation {
-                NumberAnimation { target: shaft; property: "opacity"; from: 0; to: root.litBright ? 0.40 : 0.20; duration: 380; easing.type: Easing.OutQuad }
-                NumberAnimation { target: shaft; property: "opacity"; to: 0; duration: 640; easing.type: Easing.InQuad }
-              }
-            }
-            ScriptAction { script: shaft.live = false }
-          }
-        }
-      }
-
-      // the glitter: motes carried down the beam, twinkling as they go
+      // The glitter itself. Each spark appears somewhere on the canopy, drifts
+      // barely at all — it is a catch of light, not a falling particle — winks
+      // several times and goes out. Staggered starts are what make it read as
+      // sparkle rather than as one synchronised flash.
       Repeater {
         id: motePool
-        model: 30
+        model: 46
         Rectangle {
           id: mote
           required property int index
@@ -705,14 +650,16 @@ Item {
           property real _tx: 0
           property real _ty: 0
           width: 1 + (mote.index % 3); height: width
+          radius: width > 2 ? 1 : 0
           visible: live; opacity: 0
           color: root.moteTone
           antialiasing: false
-          function fire(px, py, tx, ty, delay) {
+          function fire(px, py, delay) {
             live = true
             x = px; y = py
-            mote._tx = px + tx + (Math.random() - 0.5) * 14
-            mote._ty = py + ty + (Math.random() - 0.5) * 14
+            // a hair of drift, so it shimmers in place instead of travelling
+            mote._tx = px + (Math.random() - 0.5) * 9
+            mote._ty = py + (Math.random() - 0.5) * 7
             moteHold.duration = delay
             moteAnim.restart()
           }
@@ -720,17 +667,17 @@ Item {
             id: moteAnim
             PauseAnimation { id: moteHold; duration: 0 }
             ParallelAnimation {
-              NumberAnimation { target: mote; property: "x"; to: mote._tx; duration: 1500; easing.type: Easing.InOutSine }
-              NumberAnimation { target: mote; property: "y"; to: mote._ty; duration: 1500; easing.type: Easing.InOutSine }
+              NumberAnimation { target: mote; property: "x"; to: mote._tx; duration: 900; easing.type: Easing.InOutSine }
+              NumberAnimation { target: mote; property: "y"; to: mote._ty; duration: 900; easing.type: Easing.InOutSine }
               SequentialAnimation {
-                NumberAnimation { target: mote; property: "opacity"; from: 0; to: root.litBright ? 0.95 : 0.6; duration: 240 }
-                // the twinkle: it catches and loses the light on the way down
+                NumberAnimation { target: mote; property: "opacity"; from: 0; to: root.litBright ? 1.0 : 0.66; duration: 110; easing.type: Easing.OutQuad }
+                // the wink: quick and uneven, which is what glitter looks like
                 SequentialAnimation {
                   loops: 3
-                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 0.28 : 0.18; duration: 170 }
-                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 0.95 : 0.6; duration: 170 }
+                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 0.16 : 0.10; duration: 105 }
+                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 1.0 : 0.66; duration: 105 }
                 }
-                NumberAnimation { target: mote; property: "opacity"; to: 0; duration: 240 }
+                NumberAnimation { target: mote; property: "opacity"; to: 0; duration: 180; easing.type: Easing.InQuad }
               }
             }
             ScriptAction { script: mote.live = false }
@@ -738,7 +685,6 @@ Item {
         }
       }
 
-      // a falling drop, and the ring it leaves where it lands
       Repeater {
         id: dropPool
         model: 22
