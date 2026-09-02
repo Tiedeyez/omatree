@@ -64,7 +64,13 @@ PanelWindow {
   // input mask, so it costs the desktop nothing.
   readonly property real flightPadY: Math.max(24,
     Math.round(Screen.height - root.bedH - 34))
-  implicitWidth: Math.round(bedW)
+  // The window is only a canvas — the MASK below is what actually takes input —
+  // so making it wider than the tile costs the desktop nothing, and it has to
+  // be: the quick menu is a fixed ~184px while a young tree's bed is 138, so a
+  // window sized to the bed alone clipped WATER and LIGHT clean off both edges
+  // and left TRIM half unreachable. Sizing to whichever is wider keeps the whole
+  // menu on screen at every stage of the tree's life.
+  implicitWidth: Math.round(Math.max(bedW, desktopQuickMenu.width + 24))
   implicitHeight: Math.round(bedH + flightPadY)
 
   color: "transparent"
@@ -74,11 +80,23 @@ PanelWindow {
   // Same layer as a roaming companion. The ornament still sits in front of the
   // wallpaper/background, but it does not fully block a companion: the pet can
   // walk in front of or behind the tree and even climb the pot/window stack.
+  // A Region takes an item's geometry, not its visibility, so listing the menu
+  // and the DONE tab outright would keep them stealing clicks from the desktop
+  // the whole time they are hidden. They are spelled out instead and collapse to
+  // nothing unless they are actually on screen.
   mask: Region {
     Region { item: tapArea }
-    Region { item: desktopQuickMenu }
     Region { item: returnTab }
-    Region { item: trimDone }
+    Region {
+      x: desktopQuickMenu.x; y: desktopQuickMenu.y
+      width: root.quickMenuOpen ? desktopQuickMenu.width : 0
+      height: root.quickMenuOpen ? desktopQuickMenu.height : 0
+    }
+    Region {
+      x: trimDone.x; y: trimDone.y
+      width: root.desktopPruning ? trimDone.width : 0
+      height: root.desktopPruning ? trimDone.height : 0
+    }
   }
 
   // ---- the arrival ----------------------------------------------------
@@ -306,7 +324,11 @@ PanelWindow {
 
   Item {
     id: desktopQuickMenu
-    x: bed.x + (bed.width - width) / 2
+    // Centred on the tree, but never past the window's own edges. The bed sits
+    // flush against the right edge, so a menu wider than the tree — which it is
+    // for anything but a big tree — would otherwise hang off that side and lose
+    // its last button no matter how wide the window gets.
+    x: Math.max(0, Math.min(root.width - width, bed.x + (bed.width - width) / 2))
     y: bed.y - height
     width: actionRow.width + 16
     height: actionRow.height + 10
