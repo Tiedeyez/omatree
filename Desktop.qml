@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 
@@ -25,7 +26,7 @@ PanelWindow {
   anchors { bottom: true; right: root.horizontalAnchor === "right"; left: root.horizontalAnchor === "left" }
   margins {
     bottom: 0
-    right: root.horizontalAnchor === "right" ? 16 : 0
+    right: root.horizontalAnchor === "right" ? Math.round(Screen.width * 0.25) : 0
     left: root.horizontalAnchor === "left" ? 16 : 0
   }
 
@@ -33,13 +34,16 @@ PanelWindow {
   // there is minimal transparent click-through surface on the desktop.
   readonly property real maxDesktopH: Math.max(150, Screen.height * 0.48)
   readonly property real maxDesktopW: Math.max(120, Screen.width * 0.28)
-  readonly property real targetScale: 2.23
+  readonly property real targetScale: 1.48
   readonly property real naturalW: Math.max(1, tree.artW * tree.artScale)
   readonly property real naturalH: Math.max(1, tree.artH * tree.artScale)
   readonly property real desktopScale: Math.min(
     targetScale, maxDesktopW / naturalW, maxDesktopH / naturalH)
-  readonly property real bedH: Math.min(maxDesktopH, naturalH * desktopScale)
-  readonly property real bedW: Math.min(maxDesktopW, naturalW * desktopScale)
+  // Keep the desktop stage stable as the tree grows. The artwork can become
+  // larger or smaller inside this fixed turntable footprint without moving
+  // its screen position or changing the click target.
+  readonly property real bedH: maxDesktopH
+  readonly property real bedW: maxDesktopW
 
   // Headroom above the bed: the shaft the tree comes down. A layer-shell
   // surface clips its children, which is exactly what makes the descent read
@@ -61,7 +65,9 @@ PanelWindow {
   // walk in front of or behind the tree and even climb the pot/window stack.
   mask: Region {
     Region { item: tapArea }
+    Region { item: desktopQuickMenu }
     Region { item: returnTab }
+    Region { item: trimDone }
   }
 
   // ---- the arrival ----------------------------------------------------
@@ -74,12 +80,15 @@ PanelWindow {
   //
   // PanelWindow is not an Item (no states/transitions on the window itself),
   // so the choreography lives in plain numeric properties here and is applied
-  // through a translate on the bed's children.
+  // through a translate on the bed's children. On desktop, the sprite should
+  // appear to dissolve into the wallpaper surface rather than pop in, so the
+  // transition includes a soft fade plus a short drift.
   property real _fly: 0        // 0 = still up inside the panel, 1 = standing in the corner
   readonly property bool _airborne: root._fly < 0.999
 
   // one straight, unhurried descent — no arc, no scale, no rotation
   readonly property real _travelY: -(1 - root._fly) * (root.bedH + root.flightPadY)
+  readonly property real _fade: root.showTree ? root._fly : 1 - root._fly
 
   NumberAnimation {
     id: arriveAnim
@@ -96,10 +105,12 @@ PanelWindow {
     arriveAnim.stop(); departAnim.stop()
     if (root.showTree) arriveAnim.restart()
     else departAnim.restart()
+    root.publishCompanionBridge()
   }
   Component.onCompleted: {
     root._fly = 0
     if (root.showTree) arriveAnim.start()
+    root.publishCompanionBridge()
   }
 
   // ---- the bed: the corner the tree actually sits in -------------------
@@ -122,23 +133,29 @@ PanelWindow {
 
     Bonsai {
       id: tree
-      forceFront: true
+      forceFront: false
       inHousing: false
+      onDesktop: true
       artUnits: 4.0
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       scale: root.desktopScale
-      opacity: 1
+      opacity: root._fade
       transformOrigin: Item.Bottom
       active: root.showTree
       transparent: true
       solidObject: true
       tree: root.ready ? bonsaiService.treeSpec : null
+      pruneMode: root.desktopPruning
       tint: Color.accent
       textColor: Color.foreground
       onPruneRequested: function (id) { if (root.ready) bonsaiService.pruneNode(id) }
-      onOrbitChanged: function (yaw) { if (root.ready && !root.showTree) bonsaiService.setOrbit(yaw) }
-      Component.onCompleted: tree.yaw = 0
+      onOrbitChanged: function (yaw) { if (root.ready) bonsaiService.setOrbit(yaw) }
+      Component.onCompleted: {
+        if (root.ready && root.bonsaiService && typeof root.bonsaiService.yaw !== "undefined")
+          tree.yaw = root.bonsaiService.yaw
+        else tree.yaw = 0
+      }
 
       transform: Translate { y: root._travelY }
     }
@@ -163,9 +180,41 @@ PanelWindow {
       MouseArea {
         id: tapMa
         anchors.fill: parent
+        enabled: !root.desktopPruning
         hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.summonPanel()
+        onPressed: function (m) {
+          if (m.button === Qt.MiddleButton && root.ready && root.showTree) {
+            root._rotating = true
+            root._rotLastX = m.x
+            m.accepted = true
+            return
+          }
+        }
+        onPositionChanged: function (m) {
+          if (!root._rotating || m.buttons !== Qt.MiddleButton || !root.ready || !root.showTree) return
+          var delta = (m.x - root._rotLastX) * 0.018
+          root._rotLastX = m.x
+          tree.animateToYaw(tree.yaw + delta)
+          m.accepted = true
+        }
+        onReleased: function (m) {
+          if (m.button === Qt.MiddleButton) {
+            root._rotating = false
+            root._rotLastX = 0
+            if (root.ready) root.bonsaiService.setOrbit(tree.yaw)
+            m.accepted = true
+          }
+        }
+        onClicked: function (m) {
+          if (m.button === Qt.MiddleButton) return
+          if (root.ready && root.showTree) {
+            root.quickMenuOpen = !root.quickMenuOpen
+            if (root.quickMenuOpen) return
+          }
+          root.summonPanel()
+        }
       }
     }
   }
@@ -175,8 +224,156 @@ PanelWindow {
   // hovered. It is the tree asking, in its own voice, to be brought back in —
   // clicking it returns it to the bar (desktopEnabled = false), the same as
   // switching "SET ME OUT" off in the panel.
+  property bool quickMenuOpen: false
+  property bool desktopPruning: false
+  property bool _rotating: false
+  property real _rotLastX: 0
+  readonly property string companionBridgePath:
+    (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
+      + "/omarchy/omatree-companion.json"
+
+  function publishCompanionBridge() {
+    if (!root.ready || !root.showTree || !isFinite(root.bedW) || !isFinite(root.bedH)) return
+    var baseX = bed.x
+    var baseY = Screen.height - root.implicitHeight + bed.y
+    var floor = baseY + bed.height
+    var center = baseX + bed.width / 2
+    var span = Math.max(28, bed.width * 0.18)
+    companionBridge.setText(JSON.stringify({
+      version: 1,
+      screen: Screen.name,
+      platforms: [
+        { x1: center - span, x2: center + span, y: floor - 5, id: "saucer" },
+        { x1: center - span * 0.72, x2: center + span * 0.72, y: floor - bed.height * 0.22, id: "lower-branch" },
+        { x1: center - span * 0.48, x2: center + span * 0.48, y: floor - bed.height * 0.43, id: "upper-branch" }
+      ]
+    }, null, 2) + "\n")
+  }
+
+  FileView {
+    id: companionBridge
+    path: root.companionBridgePath
+    preload: false
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+  }
+
+  onImplicitHeightChanged: root.publishCompanionBridge()
+  onImplicitWidthChanged: root.publishCompanionBridge()
+
+  function doDesktopAction(kind) {
+    if (!root.ready || !root.showTree) return
+    var svc = root.bonsaiService
+    if (kind === "water") { svc.waterNow(); tree.water(); }
+    // desktopPruning drives tree.pruneMode through its binding — assigning the
+    // property here as well would break that binding and strand trim mode on.
+    else if (kind === "trim") root.desktopPruning = true
+    else if (kind === "blinds") {
+      svc.lampOn = !svc.lampOn
+      if (svc.lampOn) tree.light()
+    }
+    root.quickMenuOpen = false
+  }
+
   readonly property bool _tabShown:
     root.showTree && !root._airborne && (tapMa.containsMouse || returnMa.containsMouse)
+
+  Item {
+    id: desktopQuickMenu
+    x: bed.x + (bed.width - width) / 2
+    y: bed.y - height
+    width: actionRow.width + 16
+    height: actionRow.height + 10
+    opacity: root.showTree && root.quickMenuOpen ? 1 : 0
+    visible: opacity > 0.01
+    Behavior on opacity { NumberAnimation { duration: 140 } }
+
+    Rectangle {
+      anchors.fill: parent
+      radius: 8
+      color: Qt.rgba(0, 0, 0, 0.54)
+      border.width: 1
+      border.color: Qt.alpha(Color.accent, 0.55)
+    }
+
+    Row {
+      id: actionRow
+      anchors.centerIn: parent
+      spacing: 6
+      property real btnW: 52
+
+      Repeater {
+        model: [
+          { key: "water", label: "WATER" },
+          { key: "trim", label: "TRIM" },
+          { key: "blinds", label: "LIGHT" }
+        ]
+
+        Rectangle {
+          id: quickAction
+          required property var modelData
+          width: actionRow.btnW
+          height: 22
+          radius: 6
+          color: ma.containsMouse ? Qt.alpha(Color.accent, 0.18) : Qt.rgba(0, 0, 0, 0.18)
+          border.width: 1
+          border.color: Qt.alpha(Color.accent, 0.5)
+          Text {
+            anchors.centerIn: parent
+            text: quickAction.modelData.label
+            color: Color.accent
+            font.family: "monospace"
+            font.pixelSize: 9
+            font.letterSpacing: 1.2
+            renderType: Text.QtRendering
+          }
+          MouseArea {
+            id: ma
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.doDesktopAction(quickAction.modelData.key)
+          }
+        }
+      }
+    }
+  }
+
+  // The way out of trim mode. It is a sibling of the quick menu, not a child:
+  // pressing TRIM closes that menu, and a DONE button living inside it would
+  // vanish with it the instant it became the only way back.
+  Item {
+    id: trimDone
+    x: bed.x + bed.width - width
+    y: bed.y - height
+    width: trimDoneLabel.implicitWidth + 14
+    height: trimDoneLabel.implicitHeight + 8
+    visible: root.showTree && root.desktopPruning
+
+    Rectangle {
+      anchors.fill: parent
+      radius: 3
+      color: Qt.rgba(0, 0, 0, 0.58)
+      border.width: 1
+      border.color: Qt.alpha(Color.accent, 0.65)
+    }
+    Text {
+      id: trimDoneLabel
+      anchors.centerIn: parent
+      text: "DONE"
+      color: Color.accent
+      font.family: "monospace"
+      font.pixelSize: 10
+      font.letterSpacing: 1.5
+    }
+    MouseArea {
+      anchors.fill: parent
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.desktopPruning = false
+    }
+  }
+
   Item {
     id: returnTab
     anchors { top: bed.top; right: bed.right }

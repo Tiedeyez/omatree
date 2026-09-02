@@ -389,10 +389,11 @@ function build(sk, V) {
     return potAmb + (1 - potAmb) * (0.62 + 0.23 * toward + 0.15 * side) * (night ? 0.5 : sun.intensity)
   }
   // A shallow saucer gives the pot a physical footprint. It has to be a real
-  // (if squat) box like the pot, not a flat quad — a horizontal plate at this
-  // pitch is almost entirely hidden behind the pot and its rotating corners
-  // poke out as stray wedges. Built from the same terracotta so the two read
-  // as one piece of pottery.
+  // (if squat) box like the pot, not a flat quad — a horizontal plate at either
+  // pitch sits at the pot's own centre plane, so it lands behind the front wall
+  // and disappears. The box is what makes the rim visible from every angle,
+  // including the flatter desktop pitch. Glazed cream, so the plate reads as a
+  // separate piece of pottery the pot is standing on.
   var sTopR = potR * 0.98, sBotR = potR * 0.90
   var sTopY = pBotY + 0.5, sBotY = pBotY - SAUCER_DROP + 0.5
   var SN = [
@@ -402,6 +403,7 @@ function build(sk, V) {
   var SP = []
   for (var si = 0; si < 8; si++) SP.push(project(SN[si], V))
   var saucerOps = []
+  var cream = { r: 0.95, g: 0.92, b: 0.80 }
   for (var sf = 0; sf < 4; sf++) {
     var sdd = sideDefsFor(sf)
     var slm = faceLum(sdd.n[0], sdd.n[2]) * 0.88     // a touch in the pot's shadow
@@ -409,19 +411,21 @@ function build(sk, V) {
       op: "roundedPoly", mat: "pot",
       pts: [[SP[sdd.i[0]].x, SP[sdd.i[0]].y], [SP[sdd.i[1]].x, SP[sdd.i[1]].y],
             [SP[sdd.i[2]].x, SP[sdd.i[2]].y], [SP[sdd.i[3]].x, SP[sdd.i[3]].y]],
-      fill: shade(pal.pot, slm, night, gold),
-      edge: shade(pal.pot, slm * 0.86, night, gold), salt: salt + 17,
+      fill: shade(cream, slm, night, gold),
+      edge: shade(cream, slm * 0.86, night, gold), salt: salt + 17,
       z: (SP[sdd.i[0]].z + SP[sdd.i[1]].z + SP[sdd.i[2]].z + SP[sdd.i[3]].z) / 4
     })
   }
   saucerOps.sort(function (p, q) { return p.z - q.z })
-  // the saucer's dish, seen as a ring around the pot foot under this pitch
+  // the saucer's dish, seen as a ring around the pot foot under this pitch. It
+  // rides the same rotating x/z frame as the pot, so the whole platform turns
+  // together instead of keeping a fixed world-facing edge.
   var dishLum = faceLum(0, 0) * 0.94
   var dishOp = {
     op: "roundedPoly", mat: "pot",
     pts: [[SP[0].x, SP[0].y], [SP[1].x, SP[1].y], [SP[2].x, SP[2].y], [SP[3].x, SP[3].y]],
-    fill: shade(pal.pot, dishLum * 0.9, night, gold),
-    edge: shade(pal.pot, dishLum * 0.74, night, gold), salt: salt + 29,
+    fill: shade(cream, dishLum * 0.9, night, gold),
+    edge: shade(cream, dishLum * 0.74, night, gold), salt: salt + 29,
     z: (SP[0].z + SP[1].z + SP[2].z + SP[3].z) / 4
   }
   // Standing water in the dish, but only right after a drink — a permanent
@@ -519,8 +523,8 @@ function build(sk, V) {
     var mossDz = Math.sin(mossAng) * potR * mossSpread
     var mossP = project([mossDx, pTopY + 0.15, mossDz], V)
     // Moss is soil that has gone green, not foliage that fell off: keep it
-    // mostly the mound's own tone with a little of the canopy pulled through,
-    // or the patches read as loose leaves scattered on the dirt.
+    // resting on the soil, never across the trunk, roots, or above the pot rim.
+    // It should feel like a damp living crust on the surface, not a hanging vine.
     var mossBase = {
       r: clamp(soilBase.r * 0.58 + pal.frond.r * 0.42, 0, 1) * 0.86,
       g: clamp(soilBase.g * 0.40 + pal.frond.g * 0.60, 0, 1) * 0.92,
@@ -530,9 +534,9 @@ function build(sk, V) {
       op: "blob", mat: "moss", depth: 1,
       cy0: soilP.y, zk: 1 / Math.max(0.02, Math.sin(pitchNow) * V.art),
       cx: mossP.x,
-      cy: mossP.y + 1.2 + (mPatch % 2) * 0.9,
-      rx: (2.5 + (mPatch % 3) * 0.85) * V.art,
-      ry: (1.0 + (mPatch % 2) * 0.35) * V.art,
+      cy: mossP.y + 0.55 + (mPatch % 2) * 0.45,
+      rx: (2.2 + (mPatch % 3) * 0.65) * V.art,
+      ry: (0.9 + (mPatch % 2) * 0.22) * V.art,
       wobf: [noise(mPatch + 4, 1, salt) - 0.5, noise(mPatch + 7, 3, salt) - 0.5, noise(mPatch + 11, 5, salt) - 0.5],
       base: mossBase,
       night: night, gold: gold, ambient: ambient,
@@ -742,16 +746,22 @@ var OMARCHY_PATH = [
 // a shade darker on the trench floor, deep shadow on the walls the light
 // misses, a catch-light on the walls it rakes across. lx/ly = screen light dir.
 function omarchyMark(u, v, lx, ly) {
-  // The front pot quad is walked from its right edge to its left edge, so its
-  // local horizontal axis is mirrored relative to the SVG artwork.
+  // Keep the Omarchy square upright and keep the mark as one solid, consistent
+  // depth: a single dark etch, not a lit-and-shadowed logo with moving depth.
   var px = (((1 - u) - 0.5) / 0.60 + 0.5) * 1200
   var py = ((v - 0.50) / 0.58 + 0.5) * 1200
+  // Rotate the logo 90° counter-clockwise on the pot face while keeping it
+  // square and fully dark.
+  var cx = 600, cy = 600
+  var dx = px - cx, dy = py - cy
+  var rx = -dy
+  var ry = dx
+  px = cx + rx
+  py = cy + ry
   var inside = false
   for (var i = 0; i < OMARCHY_PATH.length; i++)
     if (pointInPoly(px, py, OMARCHY_PATH[i])) inside = !inside
-  if (!inside) return 0
-  var facing = (py < 600 ? -ly : ly) * 0.26 + (px < 600 ? -lx : lx) * 0.26
-  return -0.52 + facing
+  return inside ? -0.68 : 0
 }
 
 function polyPixel(op, x, y) {
@@ -857,7 +867,16 @@ function strokePixel(op, x, y) {
   var ndotl = bestNx * op.lx + bestNy * op.ly + nz * 0.4
   var lum = clamp(ndotl * 0.6 + 0.55, 0, 1)
   var col = lum > 0.72 ? op.hi : lum < 0.42 ? op.lo : op.fill
-  if (bestSD > -1.0) col = op.edge                      // crisp silhouette rim
+  if (op.mat === "wood") {
+    // Crisp, deliberate silhouettes on the trunk, branches and roots: keep a
+    // darker true edge so every limb reads as a distinct solid form instead of a
+    // soft painted blur.
+    if (bestSD > -0.25) col = mul(op.edge, 0.82)
+    else if (bestSD > -0.9) col = mul(op.edge, 0.94)
+    else if (bestSD > -1.6) col = op.edge
+  } else if (bestSD > -1.0) {
+    col = op.edge
+  }
   var k = noise(x >> 1, y >> 1, op.salt) * 0.6 + noise(x, y, op.salt + 9) * 0.4
   if (k < 0.14) col = mul(col, 0.88)                    // bark mottle
   else if (k > 0.9) col = mul(col, 1.07)

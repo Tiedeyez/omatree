@@ -189,6 +189,20 @@ Panel {
   // delegates (a rebuild on every service tick was making the pill rows jump and
   // the hover state stick to the wrong pill). Live values + hints come through
   // needValue()/needHint() bindings inside the delegate.
+  // Light means two different things depending on the hour, and the control
+  // should say which. In daylight you are opening a window onto the sun; after
+  // dark you are switching on a grow lamp over the tree. Same toggle, same
+  // state — but the tree is not pretending a lamp is the sun, or the other way
+  // round.
+  readonly property bool byDaylight: root.ready && root.bonsaiService.daylight
+  readonly property bool lightOn: root.ready && root.bonsaiService.lampOn
+  readonly property string lightWord: root.byDaylight
+    ? (root.lightOn ? "close blinds" : "open blinds")
+    : "lamp"
+  readonly property string lightCaps: root.byDaylight
+    ? (root.lightOn ? "CLOSE BLINDS" : "OPEN BLINDS")
+    : "LAMP"
+
   readonly property var needs: [
     { label: "water", action: "water" },
     { label: "light", action: "lamp" },
@@ -203,8 +217,9 @@ Panel {
   }
   function needHint(action) {
     if (action === "lamp")
-      return (root.ready && bonsaiService.daylight) ? "I have good light today"
-                                                    : "it is dark out — leave my lamp on?"
+      return root.byDaylight
+        ? (root.lightOn ? "close the blinds to soften the light" : "open the blinds — I have good light today")
+        : "it is dark out — leave the grow lamp on?"
     return ({ water: "my soil dries while you work",
               feed: "my roots would like something to eat",
               prune: "trim me and I will hold the shape" })[action] || ""
@@ -318,17 +333,63 @@ Panel {
                 id: lampRow
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(5)
-                Rectangle {
+                // Drawn marks, no glyphs: by day a window (a pane with its
+                // mullions), by night a grow lamp (a head on a stem throwing
+                // light down). Lit when it is on.
+                Item {
+                  id: lightMark
                   anchors.verticalCenter: parent.verticalCenter
-                  width: Style.space(6); height: width; radius: width / 2
-                  color: lampToggle.on ? root.accent : "transparent"
-                  border.width: 1
-                  border.color: lampToggle.on ? root.accent : Qt.alpha(root.fg, 0.4)
-                  Behavior on color { ColorAnimation { duration: 160 } }
+                  width: Style.space(9); height: Style.space(9)
+                  readonly property color ink: lampToggle.on ? root.accent : Qt.alpha(root.fg, 0.45)
+
+                  // -- window --
+                  Rectangle {
+                    visible: root.byDaylight
+                    anchors.fill: parent
+                    color: lampToggle.on ? Qt.alpha(root.accent, 0.22) : "transparent"
+                    border.width: 1
+                    border.color: lightMark.ink
+                    Behavior on color { ColorAnimation { duration: 160 } }
+                  }
+                  Rectangle {
+                    visible: root.byDaylight
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 1; width: 1; height: parent.height - 2
+                    color: lightMark.ink
+                  }
+                  Rectangle {
+                    visible: root.byDaylight
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 1; height: 1; width: parent.width - 2
+                    color: lightMark.ink
+                  }
+
+                  // -- grow lamp --
+                  Rectangle {          // stem
+                    visible: !root.byDaylight
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 0; width: 1; height: Math.round(parent.height * 0.34)
+                    color: lightMark.ink
+                  }
+                  Rectangle {          // hood
+                    visible: !root.byDaylight
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: Math.round(parent.height * 0.34)
+                    width: parent.width; height: Math.max(2, Math.round(parent.height * 0.24))
+                    color: lightMark.ink
+                  }
+                  Rectangle {          // the light it throws
+                    visible: !root.byDaylight && lampToggle.on
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: Math.round(parent.height * 0.62)
+                    width: Math.round(parent.width * 0.62)
+                    height: Math.round(parent.height * 0.34)
+                    color: Qt.alpha(root.accent, 0.35)
+                  }
                 }
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
-                  text: "LAMP"
+                  text: root.lightCaps
                   color: lampToggle.on ? root.accent : Qt.alpha(root.fg, 0.45)
                   font.family: root.uiFont
                   font.pixelSize: root.capSize
@@ -799,7 +860,7 @@ Panel {
               Rectangle {
                 id: actionPill
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                width: pillText.implicitWidth + Style.space(18)
+                width: Math.max(Style.space(60), pillText.implicitWidth + Style.space(18))
                 height: Style.space(20)
                 radius: root.rad > 0 ? height / 2 : 0
                 readonly property bool lit: pillHover.containsMouse || meterRow.kbOn
@@ -812,7 +873,8 @@ Panel {
                 Text {
                   id: pillText
                   anchors.centerIn: parent
-                  text: "▸ " + ({ water: "water", lamp: "lamp", feed: "feed", prune: "trim" })[meterRow.modelData.action]
+                  text: "▸ " + ({ water: "water", lamp: root.lightWord,
+                                  feed: "feed", prune: "trim" })[meterRow.modelData.action]
                   color: Qt.alpha(root.accent, 0.92)
                   font.family: root.uiFont
                   font.pixelSize: root.capSize
@@ -1085,10 +1147,9 @@ Panel {
         // now. After dark the same beams run cold and quiet: some light still
         // reaches it, that is all.
         bonsaiView.light()
-        root.flashNote(svc.daylight ? "the sun's rays are let in"
-                                    : "a little light, kept for me")
+        root.flashNote(root.byDaylight ? "the blinds are open" : "the grow lamp warms me")
       } else {
-        root.flashNote(svc.daylight ? "back into the shade" : "left to the dark")
+        root.flashNote(root.byDaylight ? "the blinds are drawn" : "the lamp goes out")
       }
     }
     else if (kind === "feed") { svc.feedNow(); root.flashNote("fed"); bonsaiView.feed() }

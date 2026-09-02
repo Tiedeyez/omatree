@@ -24,8 +24,14 @@ Item {
   property color textColor: Color.foreground
   property color bgColor: Qt.rgba(0.06, 0.07, 0.08, 1)
   property bool active: true
+  // Out on the wallpaper rather than inside the panel. This is about the
+  // viewpoint, not the yaw lock: the desktop tree still turns (middle-drag), so
+  // it cannot key off forceFront.
+  property bool onDesktop: false
   readonly property real renderYaw: root.forceFront ? 0 : root.yaw
-  readonly property real renderPitch: root.inHousing ? 0.34 : 0.26
+  // The desktop keeps a flatter, more front-on viewpoint so it reads like a
+  // person standing in front of the tree rather than peeking in from the side.
+  readonly property real renderPitch: root.inHousing ? 0.34 : (root.onDesktop ? 0.12 : 0.26)
   readonly property real housingScale: root.inHousing ? 1.08 : 1.0
   // Render on a transparent RGBA buffer (the on-desktop ornament) so the
   // wallpaper shows through the empty bed and the glass case. Opaque BMP by
@@ -102,12 +108,13 @@ Item {
     var frond = Qt.hsva(leafH, grey ? 0.14 : (lite ? 0.62 : 0.52), lite ? 0.54 : 0.80, 1)
     var woodH = grey ? 0.07 : root._mixHue(0.075, ah, 0.14)
     var trunk = Qt.hsva(woodH, grey ? 0.08 : 0.36, lite ? 0.46 : 0.56, 1)
-    // Keep the pot recognizably terracotta while allowing the active theme to
-    // tint its highlights very slightly.
+    // Earthen terracotta, warm and distinct from the trunk/roots so it reads as
+    // a deliberate pot rather than a continuation of the wood mass. The active
+    // theme is allowed to tint it only very slightly.
     var potC = Qt.rgba(
-      (0.62 * 0.70 + a.r * 0.30),
-      (0.29 * 0.70 + a.g * 0.30),
-      (0.16 * 0.70 + a.b * 0.30), 1)
+      0.71 + 0.10 * a.r,
+      0.46 + 0.10 * a.g,
+      0.33 + 0.10 * a.b, 1)
     var soil = Qt.hsva(woodH, grey ? 0.10 : 0.24, lite ? 0.40 : 0.34, 1)
     var u = Color.urgent
     var fruit = Qt.hsva(u.hsvSaturation < 0.12 ? leafH : u.hsvHue, 0.55, lite ? 0.72 : 0.9, 1)
@@ -282,6 +289,14 @@ Item {
     running: root.active && root.animate && !!root.skeleton && !root.dragging
     onTriggered: { root.phase += 0.26; root.frame() }
   }
+  // A touch of ambient sparkle while the sun is out and the light is actually on.
+  // It stays subtle so the tree feels alive without turning into a lens flare.
+  Timer {
+    interval: 300000; repeat: true
+    running: root.active && root.sunUp && !!root.skeleton && !!root.tree
+      && root.tree.lamp === true && !root.dragging
+    onTriggered: fx.light(true)
+  }
   property bool animate: true
   onActiveChanged: if (root.active) root.fullFrame()
 
@@ -373,6 +388,98 @@ Item {
       onStatusChanged: if (status === Image.Ready) root._front = 1
     }
 
+    // ---- tiny, algorithmic bumble bees ---------------------------
+    // Bees only find the tree when it is out on the wallpaper. Inside the panel
+    // it is indoors, and a bee in there would be a bug in the room.
+    Item {
+      id: beeLayer
+      anchors.fill: parent
+      visible: root.onDesktop && root.active && !!root.skeleton
+      property string dayKey: ""
+      property int visitsToday: 0
+      property int maxVisitsPerDay: 4
+      function todayStamp() {
+        var d = new Date()
+        return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate()
+      }
+      function maybeVisit() {
+        var key = beeLayer.todayStamp()
+        if (beeLayer.dayKey !== key) {
+          beeLayer.dayKey = key
+          beeLayer.visitsToday = 0
+        }
+        if (beeLayer.visitsToday >= beeLayer.maxVisitsPerDay || !root.onDesktop) return
+        if (Math.random() < 0.22) {
+          var bee = beePool.itemAt(beeLayer.visitsToday % beePool.count)
+          if (bee && !bee.busy) {
+            bee.launch()
+            beeLayer.visitsToday += 1
+          }
+        }
+      }
+      Timer {
+        interval: 180000
+        repeat: true
+        running: beeLayer.visible
+        onTriggered: beeLayer.maybeVisit()
+      }
+      Repeater {
+        id: beePool
+        model: 3
+        Item {
+          id: bee
+          width: 10; height: 8
+          visible: false
+          property bool busy: false
+          property real startX: 0
+          property real startY: 0
+          property real endX: 0
+          property real endY: 0
+          function launch() {
+            bee.busy = true
+            bee.visible = true
+            bee.startX = Math.random() * (parent.width - width)
+            bee.startY = 8 + Math.random() * (parent.height * 0.5)
+            bee.endX = bee.startX + (-18 + Math.random() * 36)
+            bee.endY = bee.startY + (-16 + Math.random() * 28)
+            beeAnim.restart()
+          }
+          Rectangle {
+            x: 2; y: 1; width: 3; height: 3; radius: 1.5
+            color: "#f3d75e"
+            antialiasing: false
+          }
+          Rectangle {
+            x: 4; y: 2; width: 3; height: 2; radius: 1
+            color: "#1a1b1e"
+            antialiasing: false
+          }
+          Rectangle {
+            x: 0; y: 1; width: 2; height: 1.5; radius: 0.75
+            color: "#f6f1d8"
+            antialiasing: false
+            rotation: 22
+          }
+          Rectangle {
+            x: 5; y: 1; width: 2; height: 1.5; radius: 0.75
+            color: "#f6f1d8"
+            antialiasing: false
+            rotation: -22
+          }
+          SequentialAnimation {
+            id: beeAnim
+            ParallelAnimation {
+              NumberAnimation { target: bee; property: "x"; from: bee.startX; to: bee.endX; duration: 2000; easing.type: Easing.InOutSine }
+              NumberAnimation { target: bee; property: "y"; from: bee.startY; to: bee.endY; duration: 2000; easing.type: Easing.InOutSine }
+              NumberAnimation { target: bee; property: "opacity"; from: 0.75; to: 1; duration: 260; easing.type: Easing.OutQuad }
+            }
+            NumberAnimation { target: bee; property: "opacity"; to: 0; duration: 240; easing.type: Easing.InQuad }
+            ScriptAction { script: { bee.visible = false; bee.busy = false; bee.opacity = 1 } }
+          }
+        }
+      }
+    }
+
     // ---- effects the panel triggers on a care action -------------
     Item {
       id: fx
@@ -399,11 +506,15 @@ Item {
       // actually is right now, with dust glittering as it drifts down the
       // beam. After dark the same thing runs colder and quieter, because the
       // gesture is still "some light reaches you", just less of it.
-      function light() {
+      // ambient = the idle sparkle the tree throws off on its own, which runs at
+      // a fraction of the motes. A light() the user actually asked for always
+      // plays at full strength.
+      function light(ambient) {
         var ang = root.rayAngle
         var dx = Math.cos(ang), dy = Math.sin(ang)
         var px = -dy, py = dx                  // across the beam
         var span = Math.max(fx.width, fx.height) * 1.35
+        var sparkleCut = ambient === true ? 0.10 : 1.0
         for (var b = 0; b < shaftPool.count; b++) {
           var sh = shaftPool.itemAt(b)
           if (!sh) continue
@@ -412,7 +523,8 @@ Item {
                   fx.height / 2 + py * off - dy * span * 0.30,
                   dx * span * 0.60, dy * span * 0.60, ang, b * 55)
         }
-        for (var i = 0; i < motePool.count; i++) {
+        var moteBudget = Math.max(2, Math.round(motePool.count * sparkleCut))
+        for (var i = 0; i < moteBudget; i++) {
           var m = motePool.itemAt(i)
           if (!m || m.live) continue
           var t = Math.random() - 0.5
