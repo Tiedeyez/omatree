@@ -68,7 +68,16 @@ const PAL = {
   soil: hsv(grey ? .07 : mixHue(.075, ah, .14), grey ? .10 : .24, LIGHT ? .40 : .34),
   fruit: hsv(grey ? .32 : mixHue(.30, ah, .34), .55, LIGHT ? .72 : .9)
 }
-const BG = LIGHT ? [232, 233, 228] : [15, 17, 20]
+// --bg lets the caller render onto a colour the tree's own palette can never
+// produce, so a downstream chroma-key is exact. Keying by flood-fill from the
+// corners cannot reach background pockets ENCLOSED by foliage — those survive as
+// opaque near-background blobs, invisible on a matching backdrop and glaring on
+// any other. A key colour that collides with nothing removes the whole class.
+function bgFromFlag () {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(val('bg', '') || '')
+  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null
+}
+const BG = bgFromFlag() || (LIGHT ? [232, 233, 228] : [15, 17, 20])
 
 // --prune N cuts the N largest foliage clumps, so a before/after pair can show
 // what a trim actually takes off. The clump ids only exist once the draw list
