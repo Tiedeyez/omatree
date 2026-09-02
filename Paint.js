@@ -95,8 +95,8 @@ function measure(sk, V0) {
   // include the pot footprint — SAUCER_DROP down, since the dish sits below
   // the pot's own floor and would otherwise be cropped off the bottom edge
   var potR = potRadius(sk)
-  acc([-potR, potBottomY(sk) - SAUCER_DROP, 0], V.art)
-  acc([potR, 0, 0], V.art)
+  acc([potCX(sk) - potR, potBottomY(sk) - SAUCER_DROP, potCZ(sk) - potR], V.art)
+  acc([potCX(sk) + potR, 0, potCZ(sk) + potR], V.art)
   if (minX > maxX) { minX = -20; maxX = 20; minY = -40; maxY = 4 }
   return {
     w: Math.ceil(maxX - minX), h: Math.ceil(maxY - minY),
@@ -137,7 +137,8 @@ function measureStable(sk, V0) {
   var bz = Math.max(Math.abs(sk.bounds.min[2]), Math.abs(sk.bounds.max[2]))
   var reach = Math.max(bx, bz)
   var potR = potRadius(sk)
-  reach = Math.max(reach, potR * 1.42) + 3     // rectangular pot's corner diagonal
+  // the pot no longer sits on the trunk axis, so its own offset counts toward reach
+  reach = Math.max(reach, Math.max(Math.abs(potCX(sk)), Math.abs(potCZ(sk))) + potR * 1.42) + 3
   // vertical extent: project the y-range at pitch (yaw doesn't matter for a
   // near-vertical model), pad for clump radius
   var padTop = 0, padBot = 0
@@ -158,6 +159,12 @@ function measureStable(sk, V0) {
   return { w: w, h: h, originX: originX, originY: 3 + topY * art }
 }
 
+// Where the box sits, in x/z. Grow slides it under the crown for leaning and
+// windswept trees the way a bonsai is actually potted off-centre; everything
+// that belongs to the pot rather than to the tree has to move with it.
+function potCX(sk) { return sk.potCX || 0 }
+function potCZ(sk) { return sk.potCZ || 0 }
+
 function potRadius(sk) {
   // Grow owns the rim (it clamps the surface roots to it); this is only a
   // fallback for skeletons built before `potR` existed.
@@ -177,8 +184,11 @@ function sideDefsFor(f) { return BOX_SIDES[f] }
 var SAUCER_DROP = 2.2
 
 function potBottomY(sk) {
+  // Grow owns the box's proportions now — depth follows the rim, so the two can
+  // never disagree about the shape of the pot. The old fixed depth is kept as a
+  // fallback for skeletons built before `potDepth` existed.
+  if (sk.potDepth > 0) return -sk.potDepth - 2
   var deep = sk.style === "cascade"
-  // always deeper than the buried trunk foot so it's never left poking out
   return -((deep ? 18 : 12.5) + 2 * sk.maturity) * Math.pow(sk.ageScalar, 0.28) - 2
 }
 
@@ -368,11 +378,13 @@ function build(sk, V) {
   // pushed AFTER the trunk (see below) so the pot hides the buried trunk foot.
   var potR = potRadius(sk)
   var rt = potR, rb = potR * 0.78
+  var pcx = potCX(sk), pcz = potCZ(sk)
   var pTopY = 0.6, pBotY = potBottomY(sk)
-  // 8 corners: top 0..3, bottom 4..7 (walking the same +x/+z square)
+  // 8 corners: top 0..3, bottom 4..7 (walking the same +x/+z square), around the
+  // pot's own centre rather than the trunk's
   var CN = [
-    [-rt, pTopY, -rt], [rt, pTopY, -rt], [rt, pTopY, rt], [-rt, pTopY, rt],
-    [-rb, pBotY, -rb], [rb, pBotY, -rb], [rb, pBotY, rb], [-rb, pBotY, rb]
+    [pcx - rt, pTopY, pcz - rt], [pcx + rt, pTopY, pcz - rt], [pcx + rt, pTopY, pcz + rt], [pcx - rt, pTopY, pcz + rt],
+    [pcx - rb, pBotY, pcz - rb], [pcx + rb, pBotY, pcz - rb], [pcx + rb, pBotY, pcz + rb], [pcx - rb, pBotY, pcz + rb]
   ]
   var CP = []
   for (var ci = 0; ci < 8; ci++) CP.push(project(CN[ci], V))
@@ -397,8 +409,8 @@ function build(sk, V) {
   var sTopR = potR * 0.98, sBotR = potR * 0.90
   var sTopY = pBotY + 0.5, sBotY = pBotY - SAUCER_DROP + 0.5
   var SN = [
-    [-sTopR, sTopY, -sTopR], [sTopR, sTopY, -sTopR], [sTopR, sTopY, sTopR], [-sTopR, sTopY, sTopR],
-    [-sBotR, sBotY, -sBotR], [sBotR, sBotY, -sBotR], [sBotR, sBotY, sBotR], [-sBotR, sBotY, sBotR]
+    [pcx - sTopR, sTopY, pcz - sTopR], [pcx + sTopR, sTopY, pcz - sTopR], [pcx + sTopR, sTopY, pcz + sTopR], [pcx - sTopR, sTopY, pcz + sTopR],
+    [pcx - sBotR, sBotY, pcz - sBotR], [pcx + sBotR, sBotY, pcz - sBotR], [pcx + sBotR, sBotY, pcz + sBotR], [pcx - sBotR, sBotY, pcz + sBotR]
   ]
   var SP = []
   for (var si = 0; si < 8; si++) SP.push(project(SN[si], V))
@@ -435,8 +447,8 @@ function build(sk, V) {
   var waterOps = []
   if (wet > 0.02) {
     var wR = sTopR * 0.86, wY = sTopY - 0.12
-    var wC = [project([-wR, wY, -wR], V), project([wR, wY, -wR], V),
-              project([wR, wY, wR], V), project([-wR, wY, wR], V)]
+    var wC = [project([pcx - wR, wY, pcz - wR], V), project([pcx + wR, wY, pcz - wR], V),
+              project([pcx + wR, wY, pcz + wR], V), project([pcx - wR, wY, pcz + wR], V)]
     var wetTone = {
       r: pal.pot.r * (1 - 0.55 * wet) + 0.10 * wet,
       g: pal.pot.g * (1 - 0.42 * wet) + 0.16 * wet,
@@ -483,7 +495,7 @@ function build(sk, V) {
   // the tree grows OUT of the soil instead of stopping at a flat dark line. A
   // near-horizontal disc barely projects any height under this pitch, so the
   // crown lift is carried by cy/ry, not real geometry.
-  var soilP = project([0, pTopY, 0], V)
+  var soilP = project([pcx, pTopY, pcz], V)
   var moundLift = potR * 0.12 * V.art
   // Thirst is the dryness signal: saturated soil is deep and cool, while dry
   // soil loses moisture and reads lighter and dustier.
@@ -519,8 +531,8 @@ function build(sk, V) {
     // thing worth looking at, and now that the depth pass puts moss properly in
     // FRONT of what it overlaps, a patch sitting mid-mound simply buries them.
     var mossSpread = 0.58 + 0.34 * noise(mPatch, 12, salt)
-    var mossDx = Math.cos(mossAng) * potR * mossSpread
-    var mossDz = Math.sin(mossAng) * potR * mossSpread
+    var mossDx = pcx + Math.cos(mossAng) * potR * mossSpread
+    var mossDz = pcz + Math.sin(mossAng) * potR * mossSpread
     var mossP = project([mossDx, pTopY + 0.15, mossDz], V)
     // Moss is soil that has gone green, not foliage that fell off: keep it
     // resting on the soil, never across the trunk, roots, or above the pot rim.

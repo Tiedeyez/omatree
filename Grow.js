@@ -185,6 +185,11 @@ function grow(gen, state) {
   var windDir = [Math.cos(facing + 1.7), 0, Math.sin(facing + 1.7)]
 
   // ---- trunk: a trained line the branches hang off ----------------------
+  // A leaning trunk SPENDS its length going sideways, and lengthening it does
+  // not help: displacement is proportional to trunkH, so a taller windswept
+  // trunk simply leans proportionally further and the ratio holds (measured:
+  // 21.8% -> 25.3% failures when tried). The reach coefficients themselves are
+  // what has to come down.
   var trunkH = (TRUNK_H_BASE + TRUNK_H_GROW * m) * ageScalar
   var trunkR = (TRUNK_R_BASE + TRUNK_R_GROW * m) * ageScalar * girth
   var trnd = rngFor(seed, "trunk")
@@ -204,7 +209,7 @@ function grow(gen, state) {
     } else if (style === "slant") {
       off = scl(leanDir, t * lean * trunkH)
     } else if (style === "windswept") {
-      off = scl(leanDir, t * t * lean * trunkH * 1.4)
+      off = scl(leanDir, t * t * lean * trunkH * 0.88)
     } else if (style === "literati") {
       off = scl(leanDir, Math.sin(t * gnarlFreq * PI + ph) * gnarlAmp * trunkH * 0.12 + t * lean * trunkH * 0.5)
     } else if (style === "cascade") {
@@ -410,7 +415,7 @@ function grow(gen, state) {
     var tilt2 = Math.min(1.0, 0.5 + breadth * 0.35)
     var bd = norm(add(scl(fr2[0], Math.cos(tilt2)),
       scl(add(scl(fr2[1], Math.cos(azi2)), scl(fr2[2], Math.sin(azi2))), Math.sin(tilt2))))
-    if (style === "windswept") bd = norm(add(bd, scl(leanDir, 0.6)))
+    if (style === "windswept") bd = norm(add(bd, scl(leanDir, 0.40)))
     if (style === "cascade") bd = norm(add(bd, [0, -0.55, 0]))
     // upright styles: a bough never dives back down through the trunk
     if (upright && bd[1] < -0.1) { bd[1] = -0.1; bd = norm(bd) }
@@ -438,14 +443,16 @@ function grow(gen, state) {
 
   function finish() {
     if (min[0] > max[0]) { min = [-4, 0, -4]; max = [4, 6, 4] }
+    var pot = fitPot(potR, min, max, style)
     return {
+      potCX: pot.cx, potCZ: pot.cz, potDepth: pot.depth,
       nodes: nodes, clumps: clumps,
       bounds: { min: min, max: max },
       trunkTop: trunkTop, style: style, seed: seed,
       genus: (gen && gen.genus) || "juniper",
       ageScalar: ageScalar, ringCount: ringCount,
       needle: (gen && gen.genus) === "pine" || (gen && gen.genus) === "juniper",
-      maturity: m, potR: potR,
+      maturity: m, potR: pot.r,
       thirst: thirst, health: health,
       fruit: fruit
     }
@@ -458,6 +465,89 @@ function grow(gen, state) {
 function potRadiusFor(style, m, ageScalar) {
   var narrow = style === "cascade" || style === "literati"
   return (narrow ? 6.4 : 10.2) * (0.72 + 0.28 * m) * Math.pow(ageScalar, 0.32)
+}
+
+// A bonsai pot is chosen FOR the tree that will stand in it. potRadiusFor knows
+// only the style, the maturity and the age, so a seed that happened to throw a
+// wide sprawling crown got exactly the same box as a compact one. A sweep over
+// 1000 seeds (dev/sweep.js) found 43% of trees outside sane proportions, and
+// almost all of them were the reaching styles — windswept 100%, literati 99%,
+// slant 82%, against 1-4% for the upright ones. The canopy reached up to 4.9x
+// the pot's half-width, and its mass centre sat 2x outside the rim, which is
+// what made those trees read as toppling rather than as leaning.
+//
+// So the rim is fitted to the crown once the crown exists. Only ever ENLARGED:
+// the surface roots were already placed against the provisional rim, and a
+// wider rim still contains them, where a narrower one would leave them hanging
+// in mid-air past the terracotta.
+// Fitting to the crown alone is not enough: widening the box to carry a broad
+// canopy will, on a tree that is wide but SHORT, leave it squatting in a tray
+// wider than it is tall. The first pass traded a 43% spread failure for a 30%
+// height one. So the rim answers to both — carry the crown, but never get so
+// wide the tree looks stunted standing in it.
+// The other half is WHERE the tree stands in its box. Bonsai practice plants a
+// leaning or windswept tree off-centre, set back on the upwind side, so the
+// crown's weight still falls over the pot. Every tree here was planted dead
+// centre, so a crown thrown to one side hung its entire mass past the rim —
+// that, more than raw width, is what made those trees read as toppling rather
+// than as leaning. The box slides under the crown instead. The trunk stays well
+// inside the rim, so it never looks planted on the lip.
+// The box is derived from the tree's own dimensions, at every stage of its life.
+// The old formula scaled as ageScalar^0.32 while the TREE scales as ageScalar:
+// by 800 years the tree is 5.19x its sprout size and the pot only 1.69x, so it
+// fell three times behind and an aged tree overhung its rim by up to 8x. A
+// sprout had the opposite problem, sitting in a pot sized for the adult. Sweeping
+// the whole maturity x age space (not just the one state this was first tuned
+// at) is what surfaced both — at maturity 1.0 / age 800 every single seed was
+// out of band.
+var POT_TARGET_SPREAD = 1.75   // canopy half-width the box should visually carry
+var POT_MIN_HEIGHT = 1.35      // tree height / pot width must stay above this
+var POT_MAX_HEIGHT = 2.90      // ...and below this, or the tree looks perched on it
+var POT_SHIFT_LIMIT = 0.52     // how far off-centre the trunk may sit, as a fraction of the rim
+var POT_MIN_SHRINK = 0.70      // surface roots reach potR*0.66; never strand them outside the rim
+var POT_MIN_DEPTH = 13.5       // must clear TRUNK_BURY (11) or the trunk foot pokes through the floor
+var POT_DEPTH_RATIO = 0.68     // depth as a fraction of the pot's full width
+var POT_WIDE_OVER_DEEP = 1.45  // a training pot is always wider than it is deep
+
+function fitPot(potR, min, max, style) {
+  var treeH = max[1]
+  var cx = (min[0] + max[0]) / 2
+  var cz = (min[2] + max[2]) / 2
+  if (!(treeH > 0)) return { r: potR, depth: potDepthFor(potR, style === 'cascade'), cx: 0, cz: 0 }
+
+  // reach measured from where the box will actually sit, not from the trunk
+  var reach = Math.max(
+    Math.abs(min[0] - cx), Math.abs(max[0] - cx),
+    Math.abs(min[2] - cz), Math.abs(max[2] - cz))
+  if (!(reach > 0)) return { r: potR, depth: potDepthFor(potR, style === 'cascade'), cx: 0, cz: 0 }
+
+  var want = reach / POT_TARGET_SPREAD           // wide enough to carry the crown
+  var hi = treeH / (2 * POT_MIN_HEIGHT)          // but not so wide it looks squat
+  var lo = treeH / (2 * POT_MAX_HEIGHT)          // nor so narrow it looks perched
+  var r = Math.max(lo, Math.min(want, hi))
+  r = Math.max(r, potR * POT_MIN_SHRINK)
+
+  // A pot's DEPTH used to be a fixed number with no relation to its width, which
+  // was invisible while the width was fixed too. Once the rim started being
+  // fitted to the tree it stopped being invisible: a sprout's narrowed pot
+  // became a tall column with the logo squashed onto its face. Depth follows the
+  // rim now, and — except for cascade, whose whole point is a deep narrow box —
+  // the pot is held wider than it is deep, which floors the rim at roughly its
+  // original size. So a seedling keeps a proper training pot and simply looks
+  // small in it, the way a just-planted seedling does.
+  var deep = style === "cascade"
+  if (!deep) {
+    var d = potDepthFor(r, deep)
+    r = Math.max(r, d * POT_WIDE_OVER_DEEP / 2)
+  }
+  var lim = r * POT_SHIFT_LIMIT
+  return { r: r, depth: potDepthFor(r, deep), cx: clamp(cx, -lim, lim), cz: clamp(cz, -lim, lim) }
+}
+
+// Depth of the box, from its width. Never shallower than the buried trunk foot
+// (TRUNK_BURY) or the foot pokes out through the floor.
+function potDepthFor(r, deep) {
+  return Math.max(POT_MIN_DEPTH, 2 * r * (deep ? 1.30 : POT_DEPTH_RATIO))
 }
 
 // sample the trunk polyline at fraction t (0 base .. 1 top)
