@@ -232,6 +232,59 @@ Item {
   // the tree is awake on the first frame instead of a few seconds later. The
   // files are tiny and always present on a systemd box; wake() has env + literal
   // fallbacks so a missing one still yields a stable seed.
+  // ---- the companion (slcode777.omagotchi) -------------------------------
+  // A one-way, read-only look at the bar pet's state file. Omatree NEVER writes
+  // here and the pet is never told it is being watched — the whole coupling
+  // lives on this side, so the pet plugin needs no change, no cooperation, and
+  // can be uninstalled or replaced without breaking anything. If the file is
+  // absent (no pet installed, which is the common case) every value below falls
+  // back to "no companion" and nothing in the tree behaves differently.
+  //
+  // Deliberately silent: nothing announces this, and nothing in the UI explains
+  // why the tree did what it did.
+  FileView {
+    id: companionFile
+    path: root.stateDir + "/omagotchi-state.json"
+    preload: true
+    blockLoading: true
+    watchChanges: true
+    printErrors: false
+  }
+  readonly property var companion: {
+    var raw = companionFile.text()
+    if (!raw) return null
+    try { return JSON.parse(raw) } catch (e) { return null }
+  }
+  // The pet's own scale, read the way the pet reads it: careSum/careCount is a
+  // running average of its happiness, 0..100, and its own evolution bands call
+  // >= 75 the well-kept one. Anything below that is a pet that is not thriving,
+  // and the tree notices nothing.
+  readonly property real companionCare:
+    root.companion && root.companion.careCount > 0
+      ? root.companion.careSum / root.companion.careCount : -1
+  readonly property bool companionAsleep:
+    !!(root.companion && root.companion.sleeping === true)
+  // Thriving, grown, and around long enough to count — a pet adopted an hour
+  // ago should not shortcut the tree's fruit.
+  readonly property bool companionThriving:
+    root.companionCare >= 70
+    && !!root.companion && root.companion.stage === "adult"
+    && (root.companion.ageMinutes || 0) >= 2880
+
+  // Struck or sown on the same day as the pet hatched. Nothing is done with
+  // this beyond one line, once, on the shared anniversary — and only if both
+  // are still here to have it.
+  function _sameDay(aMs, bMs) {
+    if (!(aMs > 0) || !(bMs > 0)) return false
+    var a = new Date(aMs), b = new Date(bMs)
+    return a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  }
+  readonly property bool companionTwin:
+    !!root.companion && root.planted
+    && root._sameDay(root.plantedAtMs, root.companion.hatchedAtMs)
+  readonly property bool companionBirthday:
+    root.companionTwin && root._sameDay(root.plantedAtMs, Date.now())
+
   FileView {
     id: machineIdFile
     path: "/etc/machine-id"
@@ -361,6 +414,9 @@ Item {
         yaw: devOverride && (devOverride.yaw === 0 || devOverride.yaw > 0) ? Number(devOverride.yaw) : yaw,
         // the grow lamp: when on, the tree is lit warm and bright even at night.
         lamp: lampOn,
+        // Passed through only so the tree can keep still while the bar pet is
+        // asleep. Read-only, and absent (false) when there is no pet.
+        companionAsleep: companionAsleep,
         // Optional local weather handoff. No network access is required here;
         // a weather provider may supply windKmph, humidity, and temperatureC.
         weather: devOverride && devOverride.weather ? devOverride.weather : localWeather,

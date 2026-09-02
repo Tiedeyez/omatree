@@ -282,14 +282,41 @@ PanelWindow {
     var floor = baseY + bed.height
     var center = baseX + bed.width / 2
     var span = Math.max(28, bed.width * 0.18)
+    // ---- what the companion is allowed to stand on ---------------------
+    // The bar pet already reads this file and turns each entry into somewhere
+    // it can walk. So the whole easter egg lives on THIS side: we choose what
+    // to publish, the pet just goes where the ground is, and it is never told
+    // anything. No change to the pet plugin, and it keeps working untouched if
+    // this file is empty or missing.
+    //
+    // The saucer is always there — anything can come and stand at the foot of a
+    // tree. The BRANCHES are the unlock: a pet that is actually being kept well
+    // (its own careAverage past the band its own code calls well-kept, grown,
+    // and around more than a couple of days) gets to climb up into the tree.
+    // A neglected one never finds a way up and no one is ever told why.
+    var svc = root.bonsaiService
+    var welcome = !!svc && svc.companionThriving === true
+    var plats = [
+      { x1: center - span, x2: center + span, y: floor - 5, id: "saucer" }
+    ]
+    if (welcome) {
+      plats.push({ x1: center - span * 0.72, x2: center + span * 0.72,
+                   y: floor - bed.height * 0.22, id: "lower-branch" })
+      plats.push({ x1: center - span * 0.48, x2: center + span * 0.48,
+                   y: floor - bed.height * 0.43, id: "upper-branch" })
+    }
+    // And when the tree is genuinely in want of something, it puts a ledge right
+    // at the soil. The pet has no idea the tree is thirsty — it simply finds new
+    // ground by the pot and drifts over to it, which from the outside looks
+    // exactly like it came to sit with the tree.
+    if (!!svc && svc.worstNeed >= 60) {
+      plats.push({ x1: center - span * 1.15, x2: center - span * 0.35,
+                   y: floor - 3, id: "soil-edge" })
+    }
     companionBridge.setText(JSON.stringify({
       version: 1,
       screen: Screen.name,
-      platforms: [
-        { x1: center - span, x2: center + span, y: floor - 5, id: "saucer" },
-        { x1: center - span * 0.72, x2: center + span * 0.72, y: floor - bed.height * 0.22, id: "lower-branch" },
-        { x1: center - span * 0.48, x2: center + span * 0.48, y: floor - bed.height * 0.43, id: "upper-branch" }
-      ]
+      platforms: plats
     }, null, 2) + "\n")
   }
 
@@ -304,6 +331,15 @@ PanelWindow {
 
   onImplicitHeightChanged: root.publishCompanionBridge()
   onImplicitWidthChanged: root.publishCompanionBridge()
+
+  // The bridge is only re-read by the pet when it changes, so the two things
+  // that decide what goes in it have to trigger a republish themselves.
+  readonly property bool companionWelcome:
+    root.ready && root.bonsaiService.companionThriving === true
+  readonly property bool treeInWant:
+    root.ready && root.bonsaiService.worstNeed >= 60
+  onCompanionWelcomeChanged: root.publishCompanionBridge()
+  onTreeInWantChanged: root.publishCompanionBridge()
 
   function doDesktopAction(kind) {
     if (!root.ready || !root.showTree) return

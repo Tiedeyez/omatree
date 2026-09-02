@@ -55,7 +55,12 @@ Panel {
     if (root._greeted || !root.ready || !root.planted) return
     root._greeted = true
     sunriseAnim.restart()
-    root.greetLine = ("good morning — I am " + root.bonsaiService.treeName).toLowerCase()
+    // Once a year, and only if the bar pet happens to have hatched on the same
+    // day this tree was started, the greeting is a different one. Nothing else
+    // marks it, nothing explains it, and it is gone with the greeting timer.
+    root.greetLine = root.bonsaiService.companionBirthday
+      ? "we are the same age today"
+      : ("good morning — I am " + root.bonsaiService.treeName).toLowerCase()
     greetTimer.restart()
   }
 

@@ -295,10 +295,15 @@ Item {
   }
   // A touch of ambient sparkle while the sun is out and the light is actually on.
   // It stays subtle so the tree feels alive without turning into a lens flare.
+  //
+  // Except while the bar pet is asleep, when the tree keeps still and does not
+  // sparkle at all. Nothing says so, and nothing about the pet changes — this
+  // side simply reads that it is sleeping and lets it sleep.
   Timer {
     interval: 300000; repeat: true
     running: root.active && root.sunUp && !!root.skeleton && !!root.tree
       && root.tree.lamp === true && !root.dragging
+      && root.tree.companionAsleep !== true
     onTriggered: fx.light(true)
   }
   property bool animate: true
