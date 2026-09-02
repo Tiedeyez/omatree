@@ -581,60 +581,43 @@ Item {
       // fraction of the count. A light() the user actually asked for always
       // plays at full strength.
       function light(ambient) {
-        var budget = Math.max(3, Math.round(motePool.count * (ambient === true ? 0.30 : 1.0)))
+        // Land the sparks ON THE FOLIAGE. Scattering across fx's own box — even
+        // biased toward the middle — still fills a rectangle, and a rectangle of
+        // glitter around a tree just draws a box. hitAreas are the screen rects
+        // of the actual foliage clumps (the same ones trim mode offers you), so
+        // picking a clump and a point inside it means the sparkle follows the
+        // tree's real shape and never lights an empty corner.
+        var areas = root.hitAreas
+        var s = root.artScale
+        // Occasional, not a burst: a handful of points, spread over a couple of
+        // seconds, so it twinkles rather than flashes.
+        var budget = ambient === true ? 4 : 12
         var n = 0
         for (var i = 0; i < motePool.count && n < budget; i++) {
           var m = motePool.itemAt(i)
           if (!m || m.live) continue
-          // Gathered on the canopy rather than sprayed evenly into the empty
-          // corners: two averaged randoms bias toward the middle, and the
-          // vertical range stops above the pot.
-          var cx = (Math.random() + Math.random()) / 2
-          m.fire(fx.width * (0.08 + 0.84 * cx),
-                 fx.height * (0.05 + 0.62 * Math.random()),
-                 Math.random() * 680)
+          var px, py
+          if (areas && areas.length > 0) {
+            var r = areas[Math.floor(Math.random() * areas.length)]
+            px = (r.x + Math.random() * r.w) * s
+            py = (r.y + Math.random() * r.h) * s
+          } else {
+            // no clump map yet (a bare sprout): keep it tight to the middle
+            px = fx.width * (0.35 + 0.30 * Math.random())
+            py = fx.height * (0.20 + 0.30 * Math.random())
+          }
+          m.fire(px, py, Math.random() * 1800)
           n++
         }
       }
 
-      // ---- the grow lamp's own glow --------------------------------
-      // Not a flash on a gesture: while the lamp is ON there is light in the air
-      // over the tree, and it hangs directly above. A soft warm pool with real
-      // presence — brightest at the top of the frame, gone before the pot — plus
-      // a brighter bloom where the lamp head itself sits. Rectangle gradients are
-      // linear only and Quickshell has no working Canvas, so the round falloff of
-      // the bloom is four nested capsules of decreasing alpha rather than a real
-      // radial gradient. At this size the banding is not visible.
-      Item {
-        id: lampGlow
-        anchors.fill: parent
-        opacity: root.lampLit ? 1 : 0
-        visible: opacity > 0.01
-        Behavior on opacity { NumberAnimation { duration: 620; easing.type: Easing.InOutQuad } }
+      // The grow lamp used to also paint a warm pool over the tree. QML
+      // Rectangle gradients are linear only, so that pool was a full-width box
+      // with hard left, right and bottom edges — it read as a lit rectangle
+      // sitting around the tree rather than as light. Removed: the lamp still
+      // lights the tree properly through Paint's shading (lampDir(), from
+      // overhead), and the only thing the fx layer adds now is the glitter.
 
-        Rectangle {
-          width: parent.width
-          height: parent.height * 0.74
-          gradient: Gradient {
-            GradientStop { position: 0.0;  color: Qt.rgba(1.0, 0.90, 0.68, 0.26) }
-            GradientStop { position: 0.34; color: Qt.rgba(1.0, 0.89, 0.66, 0.13) }
-            GradientStop { position: 1.0;  color: Qt.rgba(1.0, 0.88, 0.64, 0.0) }
-          }
-        }
-        Repeater {
-          model: 4
-          Rectangle {
-            required property int index
-            readonly property real k: (index + 1) / 4
-            width: lampGlow.width * (0.22 + 0.34 * k)
-            height: width * 0.52
-            x: (lampGlow.width - width) / 2
-            y: -height * 0.44
-            radius: height / 2
-            color: Qt.rgba(1.0, 0.93, 0.74, 0.14 * (1.05 - k))
-          }
-        }
-      }
 
       // The glitter itself. Each spark appears somewhere on the canopy, drifts
       // barely at all — it is a catch of light, not a falling particle — winks
