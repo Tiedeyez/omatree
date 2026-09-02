@@ -25,7 +25,7 @@ function loadLib (rel, exportList) {
 const TreeGen = loadLib('TreeGen.js', 'genesis,STYLES,GENUS_NAMES')
 const Grow = loadLib('Grow.js', 'grow')
 const Paint = loadLib('Paint.js',
-  'build,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime')
+  'build,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime,lampDir')
 
 function shaderFor (op) {
   return op.op === 'blob' ? Paint.blobPixel

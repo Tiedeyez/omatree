@@ -131,11 +131,25 @@ Item {
   // shaders derive it (Paint: x right, y DOWN, z toward the viewer). The sun's
   // position comes from the machine's own clock and timezone — nothing is
   // fetched, and nothing needs to be.
-  readonly property real lightX: root.sun && root.sun.dir ? root.sun.dir[0] : 0.2
-  readonly property real lightY: root.sun && root.sun.dir ? -root.sun.dir[1] : -0.9
+  // A grow lamp hangs ABOVE the tree; the sun after dusk does not — sunForTime
+  // returns elevation 0 there, a dead-horizontal vector. Deriving the beams from
+  // the sun while the lamp is the thing actually lighting the tree therefore
+  // rakes them in sideways, against shading Paint is already doing from
+  // overhead. Both sides read the same lamp vector so they cannot disagree.
+  readonly property bool lampLit: !!(root.tree && root.tree.lamp === true)
+  readonly property real lightX: root.lampLit ? Paint.lampDir()[0]
+    : (root.sun && root.sun.dir ? root.sun.dir[0] : 0.2)
+  readonly property real lightY: root.lampLit ? Paint.lampDir()[1]
+    : (root.sun && root.sun.dir ? -root.sun.dir[1] : -0.9)
   // Rays TRAVEL the other way: away from the light, across the tree.
   readonly property real rayAngle: Math.atan2(-root.lightY, -root.lightX)
   readonly property bool sunUp: !(root.sun && root.sun.night)
+  // What the beams are made of. Daylight is warm, the dark is cold and thin —
+  // but a lit grow lamp is its own warm source, not moonlight, so it must not
+  // fall through to the night tone just because the sun is down.
+  readonly property color beamTone: root.sunUp ? "#ffe9b0" : (root.lampLit ? "#ffdfae" : "#cfe2ff")
+  readonly property color moteTone: root.sunUp ? "#fff3c9" : (root.lampLit ? "#ffeccb" : "#dbe8ff")
+  readonly property bool litBright: root.sunUp || root.lampLit
   function refreshSun() {
     var dc = root.tree && root.tree.devClock !== undefined ? root.tree.devClock : -1
     var h, mi
@@ -318,7 +332,19 @@ Item {
   // any further requests until the next tick. Rotation stays smooth instead of
   // encodes queuing up and stalling pointer input.
   property bool _dirty: false
-  readonly property int frameInterval: 33          // ~30fps ceiling
+  // Pace to what this machine can actually encode instead of a fixed ceiling.
+  // A hardcoded 33ms throws away real smoothness on a box that encodes a frame
+  // in 12ms, and still queues up on one that needs 45 — the cost is paid during
+  // exactly the gestures that need to be fluid: dragging and stepping the
+  // turntable. Measured per frame, smoothed, and quantised so the binding is
+  // not re-evaluated on every single encode.
+  property real _encodeMs: 24
+  readonly property int minFrameInterval: 8
+  readonly property int maxFrameInterval: 48
+  readonly property int frameInterval: {
+    var q = Math.round((root._encodeMs * 1.15) / 4) * 4
+    return Math.max(root.minFrameInterval, Math.min(root.maxFrameInterval, q))
+  }
   Timer {
     id: renderTimer
     interval: root.frameInterval; repeat: false
@@ -341,6 +367,7 @@ Item {
 
   function _encode() {
     if (!root.skeleton) { imgA.source = ""; imgB.source = ""; return }
+    var _t0 = Date.now()
     var dl = Paint.build(root.skeleton, root._view())
     root.hitAreas = dl.hitAreas || []
     var url
@@ -356,6 +383,7 @@ Item {
     // once decoded, so there is always a finished frame on screen
     if (root._front === 0) imgB.source = url
     else imgA.source = url
+    root._encodeMs = root._encodeMs * 0.75 + (Date.now() - _t0) * 0.25
   }
   onYawChanged: root.requestFrame()
 
@@ -542,7 +570,7 @@ Item {
           id: shaft
           required property int index
           property bool live: false
-          readonly property color warm: root.sunUp ? "#ffe9b0" : "#cfe2ff"
+          readonly property color warm: root.beamTone
           width: Math.max(fx.width, fx.height) * 1.6
           height: 2 + (shaft.index % 3) * 2
           visible: live; opacity: 0
@@ -566,7 +594,7 @@ Item {
               NumberAnimation { target: shaft; property: "x"; to: shaft._tx; duration: 1150; easing.type: Easing.InOutSine }
               NumberAnimation { target: shaft; property: "y"; to: shaft._ty; duration: 1150; easing.type: Easing.InOutSine }
               SequentialAnimation {
-                NumberAnimation { target: shaft; property: "opacity"; from: 0; to: root.sunUp ? 0.40 : 0.20; duration: 380; easing.type: Easing.OutQuad }
+                NumberAnimation { target: shaft; property: "opacity"; from: 0; to: root.litBright ? 0.40 : 0.20; duration: 380; easing.type: Easing.OutQuad }
                 NumberAnimation { target: shaft; property: "opacity"; to: 0; duration: 640; easing.type: Easing.InQuad }
               }
             }
@@ -587,7 +615,7 @@ Item {
           property real _ty: 0
           width: 1 + (mote.index % 3); height: width
           visible: live; opacity: 0
-          color: root.sunUp ? "#fff3c9" : "#dbe8ff"
+          color: root.moteTone
           antialiasing: false
           function fire(px, py, tx, ty, delay) {
             live = true
@@ -604,12 +632,12 @@ Item {
               NumberAnimation { target: mote; property: "x"; to: mote._tx; duration: 1500; easing.type: Easing.InOutSine }
               NumberAnimation { target: mote; property: "y"; to: mote._ty; duration: 1500; easing.type: Easing.InOutSine }
               SequentialAnimation {
-                NumberAnimation { target: mote; property: "opacity"; from: 0; to: root.sunUp ? 0.95 : 0.6; duration: 240 }
+                NumberAnimation { target: mote; property: "opacity"; from: 0; to: root.litBright ? 0.95 : 0.6; duration: 240 }
                 // the twinkle: it catches and loses the light on the way down
                 SequentialAnimation {
                   loops: 3
-                  NumberAnimation { target: mote; property: "opacity"; to: root.sunUp ? 0.28 : 0.18; duration: 170 }
-                  NumberAnimation { target: mote; property: "opacity"; to: root.sunUp ? 0.95 : 0.6; duration: 170 }
+                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 0.28 : 0.18; duration: 170 }
+                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 0.95 : 0.6; duration: 170 }
                 }
                 NumberAnimation { target: mote; property: "opacity"; to: 0; duration: 240 }
               }

@@ -354,7 +354,7 @@ function build(sk, V) {
   // light direction in screen space (x right, y DOWN, z toward viewer)
   var L = sun.dir
   var lx = L[0], ly = -L[1], lz = L[2]
-  if (lamp) { lx = 0.15; ly = -0.9; lz = 0.4 }
+  if (lamp) { var LD = lampDir(); lx = LD[0]; ly = LD[1]; lz = LD[2] }
   var ll = Math.sqrt(lx * lx + ly * ly + lz * lz) || 1
   lx /= ll; ly /= ll; lz /= ll
   var ambient = night ? 0.5 : lamp ? 0.62 : 0.34
@@ -981,6 +981,14 @@ function grainGlyph(x, y, salt) {
 
 // ---------------------------------------------------------------------------
 // Sun from local time of day -> light dir + brightness. (time-of-day light model)
+// Where the grow lamp hangs: just above the tree and slightly in front, in the
+// same screen frame as the sun vector (x right, y DOWN, z toward viewer), so
+// y is negative. Bonsai.qml reads this too — the light shafts it draws and the
+// shading here have to agree, and they cannot if each hardcodes its own guess.
+// This matters most at night: sunForTime returns elevation 0 after dusk, so a
+// lamp that fell back to the sun vector would be lit dead horizontally.
+function lampDir() { return [0.15, -0.9, 0.4] }
+
 function sunForTime(hour, minute) {
   var t = hour + minute / 60
   var DAYSTART = 5.5, DAYEND = 19.5
