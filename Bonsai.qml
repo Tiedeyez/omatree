@@ -514,7 +514,7 @@ Item {
         var dx = Math.cos(ang), dy = Math.sin(ang)
         var px = -dy, py = dx                  // across the beam
         var span = Math.max(fx.width, fx.height) * 1.35
-        var sparkleCut = ambient === true ? 0.10 : 1.0
+        var sparkleCut = ambient === true ? 0.30 : 1.0
         for (var b = 0; b < shaftPool.count; b++) {
           var sh = shaftPool.itemAt(b)
           if (!sh) continue
