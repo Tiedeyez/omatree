@@ -7,7 +7,7 @@ by hand into whatever form you prune it toward. No two are ever alike.
 Omatree is a meditation widget, not a pet sim. Decline is slow and forgiving.
 It rewards one unhurried visit a day.
 
-![Omatree in the bar and its panel](docs/omatree-panel.png)
+![A dozen Omatrees, each grown from a different seed](docs/omatree-gallery.png)
 
 ## Install
 

@@ -1,13 +1,13 @@
 # docs/ — media for the listing
 
-Drop launch media here. The root README expects:
+- `omatree-gallery.png` — a dozen trees from a dozen seeds, the README hero.
+  Regenerate with:
+  `node dev/shot.js docs/omatree-gallery.png --gallery 12 --maturity 0.85 --scale 4`
 
-- `omatree-panel.png` — the bar mark + open panel (referenced at the top of the
-  root README)
+Still worth adding for the GitHub repo / marketplace preview:
 
-Suggested extras for the GitHub repo / marketplace preview:
-
+- `omatree-panel.png` — the bar mark + open panel
 - a short screen recording of a prune, and of sending the tree to the desktop
-- a gallery still (`node dev/shot.js grid.png --gallery 12 --maturity 0.85 --scale 3`)
+- with Omagotchi installed: the companion perched in the canopy + the panel strip
 
 The marketplace optimizes preview assets automatically on submission.
