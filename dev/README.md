@@ -99,6 +99,23 @@ Out on the wallpaper there is no panel chrome, so the tree carries its own:
 `~/.local/state/omarchy/omatree-companion.json` publishes the tree's screen-space
 footprint (saucer rim + two branch platforms) so a bar pet can walk on it.
 
+## Companion (Omagotchi) fusion
+
+`Creature.qml` is the geometric companion glyph, shared by `BarWidget.qml` (a
+perch in the canopy) and `Panel.qml` (a strip below the care meters). It only
+renders when `bar.shell.serviceFor("slcode777.omagotchi")` is non-null and
+initialized. `Service.qml` already *reads* `omagotchi-state.json` for the fruit
+shortcut and shared-birthday line; the panel strip goes further and *calls* the
+pet service — `feedNow()`, `scrub(25)`, `petThePet()`, `wakeUp()`, the same
+calls Omagotchi's own bar widget makes, so no state races. `sendOff()` /
+farewell is never wired. Every access is guarded; if upstream renames a function
+the pill just no-ops. Never patch Omagotchi's QML — couple only through its
+service API.
+
+Feed/wash rows appear only when `petValue(act) >= 8`; "a hand on its back"
+(→ `petThePet`) is always offered, becoming "wake it" (→ `wakeUp`) when the pet
+is sleeping. `companionClock` animates the glyph only while the panel is open.
+
 ## Reload after editing plugin QML/JS
 
 `rescanPlugins` does **not** hot-reload plugin QML. Use `omarchy-restart-shell`

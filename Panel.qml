@@ -15,6 +15,13 @@ Panel {
   property var anchorItem: null
   property var hostWidget: null
   property var bonsaiService: null
+  // Set by the bar widget only when the Omagotchi pet is installed. The panel
+  // grows a companion strip that tends it — feed, wash, a hand on its back —
+  // by calling the pet's own service functions (the same calls its own bar
+  // pill makes). Its pill still works and stays in step; this is the shared
+  // window onto both. Nothing here reads the pet's files or opens its UI.
+  property var petService: null
+  readonly property bool petHere: !!petService && petService.initialized === true
   readonly property var barIdentity: hostWidget || root
 
   readonly property bool ready: !!bonsaiService && bonsaiService.initialized === true
@@ -228,6 +235,48 @@ Panel {
     return ({ water: "my soil dries while you work",
               feed: "my roots would like something to eat",
               prune: "trim me and I will hold the shape" })[action] || ""
+  }
+
+  // ---- the companion (Omagotchi pet, when installed) --------------------
+  // Fixed rows so the Repeater never rebuilds; live values come through
+  // petValue() the way the tree's own meters use needValue().
+  readonly property var petRows: [
+    { label: "food", pill: "feed", act: "feed" },
+    { label: "bath", pill: "wash", act: "wash" }
+  ]
+  function petValue(act) {
+    if (!root.petHere) return 0
+    return act === "feed" ? root.petService.hunger : root.petService.dirtiness
+  }
+  function petLine() {
+    if (!root.petHere) return ""
+    switch (root.petService.mood) {
+    case "egg": return "something small is waiting to hatch in my branches"
+    case "sleeping": return "something small is asleep in my branches"
+    case "hungry": return "the creature in my branches is hungry"
+    case "dirty": return "the creature in my branches would like washing"
+    case "sleepy": return "the creature in my branches is drowsy"
+    case "bored": return "the creature in my branches is restless"
+    case "lonely": return "the creature in my branches wants your hand"
+    case "meh": return "the creature in my branches is settled"
+    default: return "the creature in my branches is happy here"
+    }
+  }
+  function companionAction(kind) {
+    if (!root.petHere) return
+    var p = root.petService
+    if (kind === "feed") { p.feedNow(); root.flashNote("something in my branches is fed") }
+    else if (kind === "wash") { p.scrub(25); root.flashNote("I rinsed it clean") }
+    else if (kind === "pet") { p.petThePet(); root.flashNote("it settles against the bark") }
+    else if (kind === "wake") { p.wakeUp(); root.flashNote("it stirs awake") }
+  }
+  Timer {
+    id: companionClock
+    property real t: 0
+    running: root.opened && root.petHere
+    repeat: true
+    interval: 90
+    onTriggered: t += 0.09
   }
 
   KeyboardPanel {
@@ -908,6 +957,146 @@ Panel {
                   }
                 }
               }
+            }
+          }
+        }
+
+        // ---- the companion ---------------------------------------
+        // Only when the Omagotchi bar pet is installed: its creature has come
+        // to live in the tree. Tend it here — feed, wash, a hand on its back —
+        // without leaving the panel. Mouse-only for now; its own pill keeps
+        // the keyboard paths.
+        Column {
+          id: companion
+          width: parent.width
+          spacing: Style.space(10)
+          visible: root.petHere && !settingsCol.open && root.planted && !root.pruning
+
+          Rectangle {   // hairline: set apart from the tree's own meters
+            width: parent.width; height: 1
+            color: Qt.alpha(root.fg, 0.12)
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(10)
+
+            Creature {
+              anchors.verticalCenter: parent.verticalCenter
+              unit: Style.space(3)
+              mood: root.petHere ? root.petService.mood : "happy"
+              tint: root.fg
+              accent: root.accent
+              phase: companionClock.t
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - Style.space(52)
+              text: root.petLine()
+              color: Qt.alpha(root.fg, 0.6)
+              font.family: root.uiFont
+              font.pixelSize: Style.font.bodySmall
+              font.italic: true
+              wrapMode: Text.Wrap
+              renderType: Text.QtRendering
+            }
+          }
+
+          Repeater {
+            model: root.petRows
+
+            Item {
+              id: petRow
+              required property var modelData
+              width: parent.width
+              height: Style.space(24)
+              visible: root.petValue(petRow.modelData.act) >= 8
+
+              Text {
+                id: cLabel
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                width: Style.space(50)
+                text: petRow.modelData.label.toUpperCase()
+                color: Qt.alpha(root.fg, 0.78)
+                font.family: root.uiFont
+                font.pixelSize: Style.font.bodySmall
+                font.letterSpacing: 1.5
+                renderType: Text.QtRendering
+              }
+
+              Rectangle {
+                anchors {
+                  left: cLabel.right; leftMargin: Style.space(6)
+                  right: cPill.left; rightMargin: Style.space(12)
+                  verticalCenter: parent.verticalCenter
+                }
+                height: Style.space(4); radius: height / 2
+                color: Qt.alpha(root.fg, 0.12)
+
+                Rectangle {
+                  height: parent.height; radius: parent.radius
+                  width: Math.max(parent.height,
+                    parent.width * (1 - root.petValue(petRow.modelData.act) / 100))
+                  color: root.petValue(petRow.modelData.act) >= 60 ? root.warn : root.accent
+                  Behavior on width { NumberAnimation { duration: 620; easing.type: Easing.InOutSine } }
+                }
+              }
+
+              Rectangle {
+                id: cPill
+                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                width: Math.max(Style.space(60), cPillText.implicitWidth + Style.space(18))
+                height: Style.space(20)
+                radius: root.rad > 0 ? height / 2 : 0
+                readonly property bool lit: cPillMa.containsMouse
+                color: lit ? Qt.alpha(root.accent, 0.16) : "transparent"
+                border.width: 1
+                border.color: Qt.alpha(root.accent, lit ? 0.55 : 0.28)
+                scale: cPillMa.pressed ? 0.93 : 1
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutSine } }
+
+                Text {
+                  id: cPillText
+                  anchors.centerIn: parent
+                  text: "▸ " + petRow.modelData.pill
+                  color: Qt.alpha(root.accent, 0.92)
+                  font.family: root.uiFont
+                  font.pixelSize: root.capSize
+                  font.letterSpacing: 1
+                  renderType: Text.QtRendering
+                }
+
+                MouseArea {
+                  id: cPillMa
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.companionAction(petRow.modelData.act)
+                }
+              }
+            }
+          }
+
+          // a hand on its back — or a nudge awake — always offered
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: (root.petHere && root.petService.sleeping)
+              ? "▸ wake it" : "▸ a hand on its back"
+            color: Qt.alpha(root.accent, handMa.containsMouse ? 0.95 : 0.7)
+            font.family: root.uiFont
+            font.pixelSize: root.capSize
+            font.letterSpacing: 1
+            renderType: Text.QtRendering
+
+            MouseArea {
+              id: handMa
+              anchors.fill: parent
+              anchors.margins: -Style.space(8)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.companionAction(
+                (root.petHere && root.petService.sleeping) ? "wake" : "pet")
             }
           }
         }

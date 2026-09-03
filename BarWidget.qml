@@ -16,6 +16,15 @@ BarWidget {
     : null
   readonly property bool serviceReady: !!bonsaiService && bonsaiService.initialized === true
 
+  // If the Omagotchi bar pet is installed, its creature comes to live in the
+  // tree: it perches on the canopy here, and the panel grows a place to tend
+  // it. Absent (the common case) none of this renders and the mark is exactly
+  // as before. We only read the pet's service — never its files, never its UI.
+  readonly property var petService: bar && bar.shell
+    ? bar.shell.serviceFor("slcode777.omagotchi") : null
+  readonly property bool petHere: !!petService && petService.initialized === true
+  readonly property string petMood: petHere ? petService.mood : ""
+
   // Panel lifecycle forwarding, required by the bar's popout switching.
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item
@@ -31,6 +40,7 @@ BarWidget {
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
     if ("bonsaiService" in target) target.bonsaiService = root.bonsaiService
+    if ("petService" in target) target.petService = root.petService
   }
 
   function open() { if (panelLoader.item) panelLoader.item.open() }
@@ -46,6 +56,7 @@ BarWidget {
   onBarChanged: Qt.callLater(injectPanel)
   onSettingsChanged: Qt.callLater(injectPanel)
   onBonsaiServiceChanged: Qt.callLater(injectPanel)
+  onPetServiceChanged: Qt.callLater(injectPanel)
   Component.onCompleted: Qt.callLater(injectPanel)
 
   Loader {
@@ -231,6 +242,20 @@ BarWidget {
         y: (trunk.y - content.pads * content.padH)
            + content.pads * content.padH * (0.1 + 0.7 * (0.5 + 0.5 * Math.cos(root.phase * 0.8)))
         color: Qt.rgba(1.0, 0.87, 0.45, root.fireflyTw)
+      }
+
+      // the companion, when the bar pet is installed: perched in the canopy,
+      // asleep or watching, its colour following the pet's mood
+      Creature {
+        id: perch
+        visible: root.petHere
+        unit: content.u * 0.6
+        mood: root.petMood
+        tint: button.foreground
+        accent: Color.accent
+        phase: root.phase
+        x: parent.width * 0.62 - width / 2
+        y: (trunk.y - content.pads * content.padH * 0.66) - height / 2
       }
     }
   }

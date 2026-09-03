@@ -57,6 +57,18 @@ Growth is deliberately slow — roughly a couple of months of daily use from
 sprout to a mature bonsai. Water is asked for by the end of a day's use; light
 over days; feed over weeks; form only seasonally, and it never nags.
 
+## If you also run Omagotchi
+
+Install [Omagotchi](https://github.com/slcode777/omagotchi) alongside Omatree and
+its creature comes to live in the tree. A small companion perches in the canopy
+on the bar mark, and the panel grows a strip below the care meters where you can
+feed it, wash it, and rest a hand on its back — without leaving the tree. It is
+drawn in Omatree's own quiet style; no sound, no emotes.
+
+The pet's own bar pill keeps working and stays in step, so you can tuck it away
+and let the tree be the one place you tend both. Remove Omagotchi and the tree
+goes back to being just a tree.
+
 ## How it works
 
 Identity (machine-id + user) is hashed into a deterministic seed. From that
