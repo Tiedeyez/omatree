@@ -22,6 +22,14 @@ Panel {
   // window onto both. Nothing here reads the pet's files or opens its UI.
   property var petService: null
   readonly property bool petHere: !!petService && petService.initialized === true
+  // For the live sprite snapshot: the pet plugin's own directory (stamped onto
+  // its manifest by the shell), its current form, and idle/sleep/eat.
+  readonly property string petDir: petHere && petService.manifest
+    ? String(petService.manifest.__sourceDir || "") : ""
+  readonly property string petForm: petHere ? String(petService.form || "") : ""
+  readonly property string petAnim: !petHere ? "idle"
+    : petService.sleeping ? "sleep"
+    : (petService.eating === true ? "eat" : "idle")
   readonly property var barIdentity: hostWidget || root
 
   readonly property bool ready: !!bonsaiService && bonsaiService.initialized === true
@@ -111,7 +119,16 @@ Panel {
       s.push("startover")
       return s
     }
-    return ["tree", "water", "lamp", "feed", "prune", "desktop", "settings"]
+    var main = ["tree", "water", "lamp", "feed", "prune"]
+    // the companion, when the pet is installed: its rows join the cursor in
+    // reading order, right where they sit under the tree's own meters
+    if (root.petHere) {
+      if (root.petValue("feed") >= 8) main.push("petfeed")
+      if (root.petValue("wash") >= 8) main.push("petwash")
+      main.push("pethand")
+    }
+    main.push("desktop", "settings")
+    return main
   }
 
   function kbWake() {
@@ -168,6 +185,11 @@ Panel {
         root.bonsaiService.setDesktop(putOut)
         root.flashNote(putOut ? "out on your desktop" : "home in the bar")
       }
+      break
+    case "petfeed": root.companionAction("feed"); break
+    case "petwash": root.companionAction("wash"); break
+    case "pethand":
+      root.companionAction(root.petHere && root.petService.sleeping ? "wake" : "pet")
       break
     case "growback":
       if (root.ready) { root.bonsaiService.pruneReset(); root.flashNote("growing back") }
@@ -964,8 +986,8 @@ Panel {
         // ---- the companion ---------------------------------------
         // Only when the Omagotchi bar pet is installed: its creature has come
         // to live in the tree. Tend it here — feed, wash, a hand on its back —
-        // without leaving the panel. Mouse-only for now; its own pill keeps
-        // the keyboard paths.
+        // without leaving the panel. Fully in the panel's keyboard cursor
+        // (petfeed / petwash / pethand), and its own pill still works too.
         Column {
           id: companion
           width: parent.width
@@ -984,6 +1006,9 @@ Panel {
             Creature {
               anchors.verticalCenter: parent.verticalCenter
               unit: Style.space(3)
+              petDir: root.petDir
+              form: root.petForm
+              anim: root.petAnim
               mood: root.petHere ? root.petService.mood : "happy"
               tint: root.fg
               accent: root.accent
@@ -1049,7 +1074,9 @@ Panel {
                 width: Math.max(Style.space(60), cPillText.implicitWidth + Style.space(18))
                 height: Style.space(20)
                 radius: root.rad > 0 ? height / 2 : 0
+                readonly property string kbName: "pet" + petRow.modelData.act
                 readonly property bool lit: cPillMa.containsMouse
+                  || (root.kbActive && root.kbFocus === cPill.kbName)
                 color: lit ? Qt.alpha(root.accent, 0.16) : "transparent"
                 border.width: 1
                 border.color: Qt.alpha(root.accent, lit ? 0.55 : 0.28)
@@ -1072,6 +1099,8 @@ Panel {
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
+                  onContainsMouseChanged: if (containsMouse && root.kbActive)
+                    root.kbFocus = cPill.kbName
                   onClicked: root.companionAction(petRow.modelData.act)
                 }
               }
@@ -1079,22 +1108,32 @@ Panel {
           }
 
           // a hand on its back — or a nudge awake — always offered
-          Text {
+          Item {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: (root.petHere && root.petService.sleeping)
-              ? "▸ wake it" : "▸ a hand on its back"
-            color: Qt.alpha(root.accent, handMa.containsMouse ? 0.95 : 0.7)
-            font.family: root.uiFont
-            font.pixelSize: root.capSize
-            font.letterSpacing: 1
-            renderType: Text.QtRendering
+            width: handText.implicitWidth + Style.space(16)
+            height: handText.implicitHeight + Style.space(8)
+            readonly property bool lit: handMa.containsMouse
+              || (root.kbActive && root.kbFocus === "pethand")
+
+            Text {
+              id: handText
+              anchors.centerIn: parent
+              text: (root.petHere && root.petService.sleeping)
+                ? "▸ wake it" : "▸ a hand on its back"
+              color: Qt.alpha(root.accent, parent.lit ? 0.95 : 0.7)
+              font.family: root.uiFont
+              font.pixelSize: root.capSize
+              font.letterSpacing: 1
+              renderType: Text.QtRendering
+            }
 
             MouseArea {
               id: handMa
               anchors.fill: parent
-              anchors.margins: -Style.space(8)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
+              onContainsMouseChanged: if (containsMouse && root.kbActive)
+                root.kbFocus = "pethand"
               onClicked: root.companionAction(
                 (root.petHere && root.petService.sleeping) ? "wake" : "pet")
             }

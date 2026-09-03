@@ -24,6 +24,12 @@ BarWidget {
     ? bar.shell.serviceFor("slcode777.omagotchi") : null
   readonly property bool petHere: !!petService && petService.initialized === true
   readonly property string petMood: petHere ? petService.mood : ""
+  readonly property string petDir: petHere && petService.manifest
+    ? String(petService.manifest.__sourceDir || "") : ""
+  readonly property string petForm: petHere ? String(petService.form || "") : ""
+  readonly property string petAnim: !petHere ? "idle"
+    : petService.sleeping ? "sleep"
+    : (petService.eating === true ? "eat" : "idle")
 
   // Panel lifecycle forwarding, required by the bar's popout switching.
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
@@ -250,6 +256,9 @@ BarWidget {
         id: perch
         visible: root.petHere
         unit: content.u * 0.6
+        petDir: root.petDir
+        form: root.petForm
+        anim: root.petAnim
         mood: root.petMood
         tint: button.foreground
         accent: Color.accent

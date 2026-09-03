@@ -101,20 +101,33 @@ footprint (saucer rim + two branch platforms) so a bar pet can walk on it.
 
 ## Companion (Omagotchi) fusion
 
-`Creature.qml` is the geometric companion glyph, shared by `BarWidget.qml` (a
-perch in the canopy) and `Panel.qml` (a strip below the care meters). It only
-renders when `bar.shell.serviceFor("slcode777.omagotchi")` is non-null and
-initialized. `Service.qml` already *reads* `omagotchi-state.json` for the fruit
-shortcut and shared-birthday line; the panel strip goes further and *calls* the
-pet service — `feedNow()`, `scrub(25)`, `petThePet()`, `wakeUp()`, the same
-calls Omagotchi's own bar widget makes, so no state races. `sendOff()` /
-farewell is never wired. Every access is guarded; if upstream renames a function
-the pill just no-ops. Never patch Omagotchi's QML — couple only through its
-service API.
+`Creature.qml` is the companion, shared by `BarWidget.qml` (a perch in the
+canopy) and `Panel.qml` (a strip below the care meters). It renders only when
+`bar.shell.serviceFor("slcode777.omagotchi")` is non-null and initialized.
+
+**The snapshot.** When the pet's directory is reachable —
+`petService.manifest.__sourceDir`, stamped on every manifest by the shell — the
+Creature shows the *real* sprite:
+`<__sourceDir>/assets/sprites/<form>_<anim>_<a|b>.png`, where `form =
+petService.form` and `anim` is `sleep` / `eat` / `idle` (from
+`petService.sleeping` / `petService.eating`), flat-tinted with `MultiEffect`
+the way Omagotchi tints it. A missing anim falls back to `idle` (every form
+ships it); if the folder can't be reached at all, a geometric glyph in
+Omatree's own hand takes over so the strip still reads.
+
+**The actions.** The panel strip *calls* the pet service — `feedNow()`,
+`scrub(25)`, `petThePet()`, `wakeUp()`, the same calls Omagotchi's own bar
+widget makes, so no state races. `sendOff()` / farewell is never wired. Every
+access is guarded; if upstream renames a function the pill just no-ops. Never
+patch Omagotchi's QML — couple only through its service API and its published
+asset-path convention. `Service.qml` separately *reads* `omagotchi-state.json`
+for the fruit shortcut and shared-birthday line — that predates this.
 
 Feed/wash rows appear only when `petValue(act) >= 8`; "a hand on its back"
 (→ `petThePet`) is always offered, becoming "wake it" (→ `wakeUp`) when the pet
-is sleeping. `companionClock` animates the glyph only while the panel is open.
+is sleeping. All three join the panel keyboard cursor as `petfeed` / `petwash`
+/ `pethand`, in reading order under the tree's own meters (`kbTargets()` /
+`kbActivate()`). `companionClock` animates only while the panel is open.
 
 ## Reload after editing plugin QML/JS
 

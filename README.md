@@ -60,10 +60,11 @@ over days; feed over weeks; form only seasonally, and it never nags.
 ## If you also run Omagotchi
 
 Install [Omagotchi](https://github.com/slcode777/omagotchi) alongside Omatree and
-its creature comes to live in the tree. A small companion perches in the canopy
-on the bar mark, and the panel grows a strip below the care meters where you can
-feed it, wash it, and rest a hand on its back — without leaving the tree. It is
-drawn in Omatree's own quiet style; no sound, no emotes.
+its creature comes to live in the tree. Its actual sprite — the current form,
+awake or asleep — perches in the canopy on the bar mark, and the panel grows a
+strip below the care meters where you can feed it, wash it, and rest a hand on
+its back, all from the same keyboard cursor as the tree's own care. No sound, no
+emotes; the tree just quietly notices.
 
 The pet's own bar pill keeps working and stays in step, so you can tuck it away
 and let the tree be the one place you tend both. Remove Omagotchi and the tree
