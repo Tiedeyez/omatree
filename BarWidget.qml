@@ -255,7 +255,7 @@ BarWidget {
       Creature {
         id: perch
         visible: root.petHere
-        unit: content.u * 0.6
+        unit: content.u * 0.8
         petDir: root.petDir
         form: root.petForm
         anim: root.petAnim
