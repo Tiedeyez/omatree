@@ -78,8 +78,11 @@ seed a 3D skeleton is grown (`Grow.js`), projected and shaded into a draw list
 roots, trunk and branches connect with real physics, not assembled parts. The
 Omarchy wordmark is etched into the pot clay.
 
-Genus (juniper, maple, pine) and classical style (formal, informal, slant,
-cascade, windswept, literati, broom, twin) are drawn from the seed.
+Genus (juniper, maple, pine), classical style (formal, informal, slant,
+cascade, windswept, literati, broom, twin), and a short whimsical one-word
+name are all drawn from the seed. The name is generated, not picked from a
+list, kept for the life of the tree, and unlikely to be shared by another
+machine.
 
 A headless service keeps the tree living — growing, ageing, getting thirsty —
 while the panel is closed.

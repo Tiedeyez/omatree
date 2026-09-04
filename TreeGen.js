@@ -39,6 +39,55 @@ function fnv1a(str) {
   return h >>> 0
 }
 
+// nameFor(seed): a short, whimsical, one-word name for the tree, built from
+// its seed. Every tree gets one; it never changes once set (Service persists
+// it). Syllables are assembled from small pools chosen so any combination
+// reads as a soft, pronounceable little name — then a filter rejects anything
+// that runs harsh or unkind, and the next attempt (same deterministic stream)
+// is tried. The reachable set is ~40k names, so two machines sharing one is
+// unlikely — not impossible, but unlikely.
+var _NAME_ON = ["b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p",
+  "r", "s", "t", "v", "w", "z", "br", "cl", "dr", "fl", "fr", "gl", "gr",
+  "pl", "sl", "st", "th", "tr", "wr", "sk", "sn"]
+var _NAME_MID = ["b", "d", "f", "g", "k", "l", "m", "n", "p", "r", "s", "t",
+  "v", "z", "ll", "mm", "nn", "rr", "ss", "ck", "nd", "nt", "sh", "th"]
+var _NAME_V = ["a", "e", "i", "o", "u", "a", "e", "i", "o", "a", "o", "e", "y"]
+var _NAME_END = ["", "", "", "", "a", "o", "i", "ie", "el", "en", "in", "na",
+  "no", "by", "ka", "o", "a", "ric", "wen", "ora", "ette", "kin", "der", "is"]
+// substrings a finished name must never contain (profanity / slur stems /
+// obvious rude words) — checked case-insensitively, purely to reject
+var _NAME_BAD = /ass|tit|cum|f[uc]k|fck|sht|sex|c[o0]k|cnt|d[i1]k|n[i1]g|fag|kkk|rap|jiz|pis|tur|cra|twa|wan|spi|hom|slu|naz|hor|who|dyk|ret|pen|vag|but|coc|dic|shi|bit|dam|hell|chin|kik|coon|goo|poo|pee|boob|ars|spaz|god|jew|nud|pube|kum|fuq|smeg|felch|phuc|labia|scro|hitl|coom/i
+
+function nameFor(seed) {
+  var rnd = mulberry32((seed >>> 0) ^ 0x27d4eb2f)
+  rnd(); rnd(); rnd()
+  function pick(a) { return a[(rnd() * a.length) | 0] }
+  function build() {
+    var s = pick(_NAME_ON) + pick(_NAME_V) + pick(_NAME_MID) + pick(_NAME_V)
+    if (rnd() < 0.11) s += pick(_NAME_ON.slice(0, 18)) + pick(_NAME_V)
+    var e = pick(_NAME_END)
+    if (/[aeiou]$/.test(s) && /^[aeiou]/.test(e)) e = e.slice(1)
+    s = (s + e).replace(/(.)\1\1+/g, "$1$1")
+    return s.charAt(0).toUpperCase() + s.slice(1)
+  }
+  function acceptable(n) {
+    if (n.length < 3 || n.length > 8) return false
+    var l = n.toLowerCase()
+    if (/[^a-z]/.test(l) || !/[aeiou]/.test(l)) return false
+    if (/[aeiou]{3}|[bcdfghjklmnpqrstvwxz]{3}/.test(l)) return false
+    if (/([bcdfghjklmnpqrstvwxz][aeiou])\1/.test(l)) return false   // no "nono", "lala"
+    if ((l.match(/(ll|mm|nn|rr|ss|tt|ck|pp|bb|dd)/g) || []).length > 1) return false
+    if (/(aa|uu|ii|yy)/.test(l)) return false
+    if (_NAME_BAD.test(l)) return false
+    return true
+  }
+  for (var t = 0; t < 64; t++) {
+    var name = build()
+    if (acceptable(name)) return name
+  }
+  return "Sprout"
+}
+
 var GENUS = {
   juniper: { depth: 7, spread: 0.60, droop: 0.5, taper: 0.62, boughs: 3, leaf: "scale" },
   maple:   { depth: 6, spread: 0.82, droop: 0.20, taper: 0.66, boughs: 4, leaf: "fan" },

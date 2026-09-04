@@ -41,17 +41,9 @@ Item {
   property string genusLabel: ""
   property string treeName: ""
 
-  // A little name, drawn from the seed — cute, and it reinforces that this one
-  // is yours.
-  readonly property var _names: [
-    "Sprout", "Sage", "Moss", "Pip", "Juno", "Bodhi", "Clover", "Reed",
-    "Sorrel", "Bram", "Elowen", "Dax", "Koa", "Yuki", "Bean", "Wren",
-    "Fenn", "Tomo", "Nori", "Suki", "Bex", "Pax", "Rue", "Ozzie", "Mika", "Tao"
-  ]
-  function nameFor(seed) {
-    var s = (seed >>> 0)
-    return _names[s % _names.length]
-  }
+  // A short whimsical one-word name, generated from the seed (TreeGen.nameFor)
+  // the first time the tree is known and then persisted — it never changes,
+  // even if the generator does. See TreeGen.js for the scheme.
 
   // --- long-lived tree facts (persisted) -----------------------------------
   property double plantedAtMs: 0
@@ -596,6 +588,7 @@ Item {
 
   function flush() {
     stateFile.setText(JSON.stringify({
+      treeName: treeName,
       plantedAtMs: plantedAtMs,
       lastSeenMs: lastSeenMs,
       lastActiveMs: lastActiveMs,
@@ -660,7 +653,7 @@ Item {
 
     genesis = TreeGen.genesis(machineIdLoaded, userName + "@" + hostName)
     genusLabel = genesis.genus
-    treeName = nameFor(genesis.seed)
+    treeName = TreeGen.nameFor(genesis.seed)   // default; a saved name (below) wins
     identityReady = true
 
     // --- the saved tree, straight off disk ---
@@ -698,6 +691,8 @@ Item {
       fruitFound = s.fruitFound === true
       fruitHarvested = s.fruitHarvested === true
       seedAvailable = s.seedAvailable === true
+      // a name once given is kept forever, even across generator changes
+      if (typeof s.treeName === "string" && s.treeName !== "") treeName = s.treeName
     } catch (e) {
       saveProblem = "not valid JSON (" + e + ")"
     }
