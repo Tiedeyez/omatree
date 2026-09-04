@@ -105,6 +105,12 @@ Validate a working copy:
 omarchy plugin validate ~/.config/omarchy/plugins/tiedeyez.omatree
 ```
 
+## Follow
+
+- X — [@officialomatree](https://x.com/officialomatree)
+- Instagram — [@theofficialomatree](https://www.instagram.com/theofficialomatree)
+- TikTok — [@omatree](https://www.tiktok.com/@omatree)
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Authored by Tiedeyez.
