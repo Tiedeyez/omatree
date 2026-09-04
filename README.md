@@ -1,6 +1,6 @@
 # Omatree
 
-A living bonsai on your Omarchy bar. It is grown from a seed unique to this
+A living tree on your Omarchy bar. It is grown from a seed unique to this
 machine and user, ages with your system and with you over weeks, and is shaped
 by hand into whatever form you prune it toward. No two are ever alike.
 
@@ -22,17 +22,17 @@ right section.
 ## Remove
 
 ```sh
-omarchy plugin remove jimmie.bonsai
+omarchy plugin remove tiedeyez.omatree
 ```
 
 Removing the plugin deletes its folder. Your tree's saved state lives
-separately at `~/.local/state/omarchy/bonsai-state.json` — delete that file too
+separately at `~/.local/state/omarchy/omatree-state.json` — delete that file too
 for a completely clean slate, or leave it and the same tree returns if you
 reinstall.
 
 ## Using it
 
-- **Bar mark.** A tiny bonsai whose canopy grows with the real tree. It
+- **Bar mark.** A tiny tree whose canopy grows with the real tree. It
   sparkles when thriving, wilts amber when it needs you, and a firefly blinks
   beside it after dark.
 - **Left-click** opens the panel: the tree, its mood, its life stage, and four
@@ -54,7 +54,7 @@ Full keyboard navigation is available throughout the panel (`↑↓`/`jk` to mov
 ### Care pacing
 
 Growth is deliberately slow — roughly a couple of months of daily use from
-sprout to a mature bonsai. Water is asked for by the end of a day's use; light
+sprout to a mature tree. Water is asked for by the end of a day's use; light
 over days; feed over weeks; form only seasonally, and it never nags.
 
 ## If you also run Omagotchi
@@ -99,7 +99,7 @@ panel override).
 Validate a working copy:
 
 ```sh
-omarchy plugin validate ~/.config/omarchy/plugins/jimmie.bonsai
+omarchy plugin validate ~/.config/omarchy/plugins/tiedeyez.omatree
 ```
 
 ## License

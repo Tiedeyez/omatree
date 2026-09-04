@@ -22,7 +22,7 @@ const ART = num('art', 2.4)
 const MAT = clamp(num('maturity', 1), 0, 1)
 const AGE = Math.max(0, num('age', 0))
 const CASE = flag('case')
-// --desktop mirrors Bonsai.qml's on-wallpaper ornament: the flatter, front-on
+// --desktop mirrors Omatree.qml's on-wallpaper ornament: the flatter, front-on
 // viewpoint, so this harness can see what the desktop widget actually draws
 // and not just the in-panel view.
 const DESK = flag('desktop')
@@ -51,7 +51,7 @@ function genFor (arg) {
   return P.TreeGen.genesis('seed:' + s, 'seed:' + s)
 }
 
-// palette (mirror Bonsai.qml)
+// palette (mirror Omatree.qml)
 function hexHSV (hex) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || ''); if (!m) return { h: .33, s: .6, v: .8 }; const r = parseInt(m[1], 16) / 255, g = parseInt(m[2], 16) / 255, b = parseInt(m[3], 16) / 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h = (h / 6 + 1) % 1 } return { h, s: mx ? d / mx : 0, v: mx } }
 function hsv (h, s, v) { const i = Math.floor(h * 6), f = h * 6 - i; const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s); return { r: [v, q, p, p, t, v][i % 6], g: [t, v, v, q, p, p][i % 6], b: [p, p, t, v, v, q][i % 6] } }
 function mixHue (a, b, k) { let d = b - a; if (d > .5) d -= 1; else if (d < -.5) d += 1; return ((a + d * k) % 1 + 1) % 1 }
@@ -63,7 +63,7 @@ const grey = ACC.s < 0.14, ah = grey ? .33 : ACC.h
 const PAL = {
   frond: hsv(grey ? .32 : mixHue(.30, ah, .34), grey ? .14 : (LIGHT ? .62 : .52), LIGHT ? .54 : .80),
   trunk: hsv(grey ? .07 : mixHue(.075, ah, .14), grey ? .08 : .36, LIGHT ? .46 : .56),
-  // mirrors Bonsai.qml potC: earthen terracotta, only faintly tinted by accent
+  // mirrors Omatree.qml potC: earthen terracotta, only faintly tinted by accent
   pot: { r: 0.71 + 0.10 * ARGB.r, g: 0.46 + 0.10 * ARGB.g, b: 0.33 + 0.10 * ARGB.b },
   soil: hsv(grey ? .07 : mixHue(.075, ah, .14), grey ? .10 : .24, LIGHT ? .40 : .34),
   fruit: hsv(grey ? .32 : mixHue(.30, ah, .34), .55, LIGHT ? .72 : .9)

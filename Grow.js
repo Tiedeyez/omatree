@@ -26,7 +26,7 @@ var TAU = PI * 2
 
 // ---- tunables (all named; tune from dev/preview.js) ------------------------
 var TRUNK_H_BASE = 8        // art units of trunk on a bare sprout
-var TRUNK_H_GROW = 19       // + this much at maturity 1  (bonsai: short + stout)
+var TRUNK_H_GROW = 19       // + this much at maturity 1  (tree: short + stout)
 var TRUNK_R_BASE = 2.6
 var TRUNK_R_GROW = 3.6
 var TRUNK_BURY   = 11       // how far the trunk foot sits below the soil line
@@ -467,7 +467,7 @@ function potRadiusFor(style, m, ageScalar) {
   return (narrow ? 6.4 : 10.2) * (0.72 + 0.28 * m) * Math.pow(ageScalar, 0.32)
 }
 
-// A bonsai pot is chosen FOR the tree that will stand in it. potRadiusFor knows
+// A tree pot is chosen FOR the tree that will stand in it. potRadiusFor knows
 // only the style, the maturity and the age, so a seed that happened to throw a
 // wide sprawling crown got exactly the same box as a compact one. A sweep over
 // 1000 seeds (dev/sweep.js) found 43% of trees outside sane proportions, and
@@ -485,7 +485,7 @@ function potRadiusFor(style, m, ageScalar) {
 // wider than it is tall. The first pass traded a 43% spread failure for a 30%
 // height one. So the rim answers to both — carry the crown, but never get so
 // wide the tree looks stunted standing in it.
-// The other half is WHERE the tree stands in its box. Bonsai practice plants a
+// The other half is WHERE the tree stands in its box. Classical practice plants a
 // leaning or windswept tree off-centre, set back on the upwind side, so the
 // crown's weight still falls over the pot. Every tree here was planted dead
 // centre, so a crown thrown to one side hung its entire mass past the rim —

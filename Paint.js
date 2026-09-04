@@ -160,7 +160,7 @@ function measureStable(sk, V0) {
 }
 
 // Where the box sits, in x/z. Grow slides it under the crown for leaning and
-// windswept trees the way a bonsai is actually potted off-centre; everything
+// windswept trees the way a tree is actually potted off-centre; everything
 // that belongs to the pot rather than to the tree has to move with it.
 function potCX(sk) { return sk.potCX || 0 }
 function potCZ(sk) { return sk.potCZ || 0 }
@@ -995,7 +995,7 @@ function grainGlyph(x, y, salt) {
 // Sun from local time of day -> light dir + brightness. (time-of-day light model)
 // Where the grow lamp hangs: just above the tree and slightly in front, in the
 // same screen frame as the sun vector (x right, y DOWN, z toward viewer), so
-// y is negative. Bonsai.qml reads this too — the light shafts it draws and the
+// y is negative. Omatree.qml reads this too — the light shafts it draws and the
 // shading here have to agree, and they cannot if each hardcodes its own guess.
 // This matters most at night: sunForTime returns elevation 0 after dusk, so a
 // lamp that fell back to the sun vector would be lit dead horizontally.

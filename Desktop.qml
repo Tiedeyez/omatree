@@ -13,11 +13,11 @@ import qs.Commons
 PanelWindow {
   id: root
 
-  property var bonsaiService: null
+  property var treeService: null
 
-  readonly property bool ready: !!bonsaiService && bonsaiService.initialized === true
-  readonly property bool showTree: root.ready && bonsaiService.planted === true
-    && bonsaiService.desktopEnabled === true
+  readonly property bool ready: !!treeService && treeService.initialized === true
+  readonly property bool showTree: root.ready && treeService.planted === true
+    && treeService.desktopEnabled === true
 
   // ---- corner placement ----------------------------------------------
   // The desktop ornament is deliberately much larger than the bar mark, but
@@ -44,7 +44,7 @@ PanelWindow {
   readonly property real maxDesktopW: Math.max(120, Screen.width * 0.14)
   // 1:1. artScale already gives a clean 2x, so the ornament is drawn at exactly
   // the size it was rendered and the pixel grid stays exact. Making the tree
-  // smaller is done by rendering FEWER art pixels (the Bonsai's artUnits below),
+  // smaller is done by rendering FEWER art pixels (the Tree's artUnits below),
   // never by scaling the finished picture down — a fractional downscale is what
   // turns crisp pixel art into mush.
   readonly property real targetScale: 1.0
@@ -76,7 +76,7 @@ PanelWindow {
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.layer: WlrLayer.Top
-  WlrLayershell.namespace: "jimmie.bonsai.desktop"
+  WlrLayershell.namespace: "tiedeyez.omatree.desktop"
   // Same layer as a roaming companion. The ornament still sits in front of the
   // wallpaper/background, but it does not fully block a companion: the pet can
   // walk in front of or behind the tree and even climb the pot/window stack.
@@ -160,7 +160,7 @@ PanelWindow {
       color: Qt.alpha(Color.accent, 0.05 + 0.16 * root._fly)
     }
 
-    Bonsai {
+    Omatree {
       id: tree
       forceFront: false
       inHousing: false
@@ -177,15 +177,15 @@ PanelWindow {
       active: root.showTree
       transparent: true
       solidObject: true
-      tree: root.ready ? bonsaiService.treeSpec : null
+      tree: root.ready ? treeService.treeSpec : null
       pruneMode: root.desktopPruning
       tint: Color.accent
       textColor: Color.foreground
-      onPruneRequested: function (id) { if (root.ready) bonsaiService.pruneNode(id) }
-      onOrbitChanged: function (yaw) { if (root.ready) bonsaiService.setOrbit(yaw) }
+      onPruneRequested: function (id) { if (root.ready) treeService.pruneNode(id) }
+      onOrbitChanged: function (yaw) { if (root.ready) treeService.setOrbit(yaw) }
       Component.onCompleted: {
-        if (root.ready && root.bonsaiService && typeof root.bonsaiService.yaw !== "undefined")
-          tree.yaw = root.bonsaiService.yaw
+        if (root.ready && root.treeService && typeof root.treeService.yaw !== "undefined")
+          tree.yaw = root.treeService.yaw
         else tree.yaw = 0
       }
 
@@ -238,7 +238,7 @@ PanelWindow {
           if (m.button === Qt.MiddleButton) {
             root._rotating = false
             root._rotLastX = 0
-            if (root.ready) root.bonsaiService.setOrbit(tree.yaw)
+            if (root.ready) root.treeService.setOrbit(tree.yaw)
             m.accepted = true
           }
         }
@@ -294,7 +294,7 @@ PanelWindow {
     // (its own careAverage past the band its own code calls well-kept, grown,
     // and around more than a couple of days) gets to climb up into the tree.
     // A neglected one never finds a way up and no one is ever told why.
-    var svc = root.bonsaiService
+    var svc = root.treeService
     var welcome = !!svc && svc.companionThriving === true
     var plats = [
       { x1: center - span, x2: center + span, y: floor - 5, id: "saucer" }
@@ -335,15 +335,15 @@ PanelWindow {
   // The bridge is only re-read by the pet when it changes, so the two things
   // that decide what goes in it have to trigger a republish themselves.
   readonly property bool companionWelcome:
-    root.ready && root.bonsaiService.companionThriving === true
+    root.ready && root.treeService.companionThriving === true
   readonly property bool treeInWant:
-    root.ready && root.bonsaiService.worstNeed >= 60
+    root.ready && root.treeService.worstNeed >= 60
   onCompanionWelcomeChanged: root.publishCompanionBridge()
   onTreeInWantChanged: root.publishCompanionBridge()
 
   function doDesktopAction(kind) {
     if (!root.ready || !root.showTree) return
-    var svc = root.bonsaiService
+    var svc = root.treeService
     if (kind === "water") { svc.waterNow(); tree.water(); }
     // desktopPruning drives tree.pruneMode through its binding — assigning the
     // property here as well would break that binding and strand trim mode on.
@@ -488,12 +488,12 @@ PanelWindow {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: if (root.ready) root.bonsaiService.setDesktop(false)
+      onClicked: if (root.ready) root.treeService.setDesktop(false)
     }
   }
 
   function summonPanel() {
     Quickshell.execDetached(
-      ["omarchy-shell", "-q", "shell", "summon", "jimmie.bonsai", "{}"])
+      ["omarchy-shell", "-q", "shell", "summon", "tiedeyez.omatree", "{}"])
   }
 }

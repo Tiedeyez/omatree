@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import "TreeGen.js" as TreeGen
 
-// Headless bonsai brain. Loaded once at shell startup, independent of the bar
+// Headless tree brain. Loaded once at shell startup, independent of the bar
 // widget, so the tree keeps living (growing, aging, thirsty) with the panel
 // closed.
 //
@@ -28,7 +28,7 @@ Item {
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME")
     || ((Quickshell.env("HOME") || "") + "/.local/state")
   readonly property string stateDir: stateHome + "/omarchy"
-  readonly property string statePath: stateDir + "/bonsai-state.json"
+  readonly property string statePath: stateDir + "/omatree-state.json"
 
   // Identity -> the seed that makes this tree theirs. machine-id + hostname are
   // read straight off disk in wake() (see below) — no subprocess to wait on.
@@ -222,7 +222,7 @@ Item {
   }
   readonly property string stageLabel: ({
     seedling: "Seedling", young: "Young tree", adolescent: "Adolescent",
-    mature: "Mature bonsai"
+    mature: "Mature tree"
   })[stage] || "Seedling"
 
   // --- identity -------------------------------------------------------------
@@ -386,7 +386,7 @@ Item {
     printErrors: false
   }
 
-  // Everything Bonsai.qml needs to grow (Grow.js) and paint (Paint.js) the tree:
+  // Everything Omatree.qml needs to grow (Grow.js) and paint (Paint.js) the tree:
   // the identity, how grown/old/cared-for it is, the hand-pruning map, the
   // turntable angle, the lamp, and devClock so the sun can be pinned in preview.
   // Combined age in years: mostly the machine's awake-time, with a slower nod to
@@ -439,17 +439,17 @@ Item {
     // Needs rise with active time. The pacing is deliberate: this is a calm
     // object, not a pet that punishes you for a weekend away. It is tuned so
     // that ONE unhurried visit a day is enough, and each need moves on roughly
-    // the rhythm real bonsai practice moves on — so the habit it builds is the
+    // the rhythm real cultivation moves on — so the habit it builds is the
     // habit a real tree would want.
     //
     // (rates are per active minute; ~480 active minutes ≈ a working day)
     //
     // Water — the daily ritual. Asks by the end of a day's use.
     thirstLevel = Math.min(100, thirstLevel + 0.145)
-    // Light — a slower slide; a bonsai left in a dim room complains in days,
+    // Light — a slower slide; a tree left in a dim room complains in days,
     // not hours, and the lamp is there for the dark half of the year.
     lightLevel = Math.min(100, lightLevel + 0.085)
-    // Feeding — real bonsai are fed every few weeks in the growing season.
+    // Feeding — real tree are fed every few weeks in the growing season.
     soilLevel = Math.min(100, soilLevel + 0.013)
     // Form — pruning is seasonal work. It should be something you choose to
     // sit down and do, never something nagging at you.
@@ -462,7 +462,7 @@ Item {
     // a cutting is already established and races ahead early on.
     // Growth is slow on purpose. A tree you can rush is not a tree — but a
     // tree that never visibly changes is not a companion either, so a
-    // well-kept one crosses into a mature bonsai over a couple of months of
+    // well-kept one crosses into a mature tree over a couple of months of
     // daily use rather than a couple of weeks.
     var care = currentCareAverage / 100
     var g = 0.000008 + 0.000040 * care
@@ -656,7 +656,7 @@ Item {
     try {
       var dv = (devOverrideFile.text() || "").trim()
       if (dv !== "") devOverride = JSON.parse(dv) || {}
-    } catch (eD) { console.warn("bonsai: dev/override.json is not valid JSON —", eD) }
+    } catch (eD) { console.warn("omatree: dev/override.json is not valid JSON —", eD) }
 
     genesis = TreeGen.genesis(machineIdLoaded, userName + "@" + hostName)
     genusLabel = genesis.genus
@@ -715,8 +715,8 @@ Item {
     }
 
     if (saveProblem !== "") {
-      console.warn("bonsai: state file " + statePath + " " + saveProblem + " — starting over")
-      notify("Bonsai couldn't read its save",
+      console.warn("omatree: state file " + statePath + " " + saveProblem + " — starting over")
+      notify("Omatree couldn't read its save",
              "It was corrupt or oversized, so a fresh seed takes over.")
     }
 
@@ -748,7 +748,7 @@ Item {
     var omarchyPath = Quickshell.env("OMARCHY_PATH") || ""
     var exec = omarchyPath !== "" ? omarchyPath + "/bin/omarchy-notification-send"
       : "omarchy-notification-send"
-    Quickshell.execDetached([exec, "--app-name", "bonsai", "-u", "normal", title, body])
+    Quickshell.execDetached([exec, "--app-name", "omatree", "-u", "normal", title, body])
   }
 
   // -------------------------------------------------------------------------
@@ -793,6 +793,6 @@ Item {
     active: root.initialized && root.planted
       && (root.desktopEnabled || root.desktopLingering)
     source: Qt.resolvedUrl("Desktop.qml")
-    onLoaded: if (item) item.bonsaiService = root
+    onLoaded: if (item) item.treeService = root
   }
 }

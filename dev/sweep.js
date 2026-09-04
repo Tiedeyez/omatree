@@ -30,12 +30,12 @@ const SHOTS = val('shots', null)
 const JSONOUT = val('json', null)
 
 // ---- what "well proportioned" means here ---------------------------------
-// Bonsai practice puts the canopy a little wider than the pot and the tree
+// Classical practice puts the canopy a little wider than the pot and the tree
 // noticeably taller than the pot is wide. These are the bands the sweep scores
 // against; they are deliberately generous, so anything flagged is a real
 // outlier and not a matter of taste.
 const SPREAD_LO = 1.05   // canopy half-width / pot half-width
-// A windswept or slanting bonsai legitimately reaches further past its rim than
+// A windswept or slanting tree legitimately reaches further past its rim than
 // a formal upright does — that reach IS the style. A single ceiling calibrated
 // on upright trees flagged the whole of windswept forever, which makes the gate
 // useless as a regression guard. Rendered evidence: these styles read correctly
@@ -48,7 +48,7 @@ const HEIGHT_LO = 1.30   // tree height / pot width
 const HEIGHT_HI = 3.20
 const BAL_HI    = 0.85   // canopy midpoint must stay well inside the rim
 
-// The LOW bands describe a grown bonsai. A sapling legitimately sits small in a
+// The LOW bands describe a grown tree. A sapling legitimately sits small in a
 // full-size training pot — that is what a fresh planting looks like, and the pot
 // is deliberately not shrunk to it (shrinking the rim turns the box into a tall
 // column). So below this maturity only the upper bands are enforced: a tree can

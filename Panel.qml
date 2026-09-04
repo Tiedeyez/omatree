@@ -10,11 +10,11 @@ import qs.Ui
 // each with a pill to tend it. Plant from seed or cutting; prune by hand.
 Panel {
   id: root
-  moduleName: "jimmie.bonsai"
+  moduleName: "tiedeyez.omatree"
 
   property var anchorItem: null
   property var hostWidget: null
-  property var bonsaiService: null
+  property var treeService: null
   // Set by the bar widget only when the Omagotchi pet is installed. The panel
   // grows a companion strip that tends it — feed, wash, a hand on its back —
   // by calling the pet's own service functions (the same calls its own bar
@@ -32,7 +32,7 @@ Panel {
     : (petService.eating === true ? "eat" : "idle")
   readonly property var barIdentity: hostWidget || root
 
-  readonly property bool ready: !!bonsaiService && bonsaiService.initialized === true
+  readonly property bool ready: !!treeService && treeService.initialized === true
   readonly property color fg: Color.popups.text
   readonly property color bg: Color.popups.background
   readonly property color accent: Color.accent
@@ -41,9 +41,9 @@ Panel {
   readonly property real capSize: Style.font.caption !== undefined ? Style.font.caption : Style.font.bodySmall
   readonly property real rad: Style.cornerRadius > 0 ? Style.space(10) : 0
 
-  readonly property real worst: root.ready ? root.bonsaiService.worstNeed : 0
-  readonly property bool planted: root.ready && root.bonsaiService.planted
-  readonly property bool pruning: bonsaiView.pruneMode
+  readonly property real worst: root.ready ? root.treeService.worstNeed : 0
+  readonly property bool planted: root.ready && root.treeService.planted
+  readonly property bool pruning: treeView.pruneMode
 
   // brief "+ watered" confirmation after a care action
   property string flash: ""
@@ -73,9 +73,9 @@ Panel {
     // Once a year, and only if the bar pet happens to have hatched on the same
     // day this tree was started, the greeting is a different one. Nothing else
     // marks it, nothing explains it, and it is gone with the greeting timer.
-    root.greetLine = root.bonsaiService.companionBirthday
+    root.greetLine = root.treeService.companionBirthday
       ? "we are the same age today"
-      : ("good morning — I am " + root.bonsaiService.treeName).toLowerCase()
+      : ("good morning — I am " + root.treeService.treeName).toLowerCase()
     greetTimer.restart()
   }
 
@@ -96,7 +96,7 @@ Panel {
   // press just wakes it, like the other omarchy panels); kbFocus names the
   // target. Mouse hover keeps them in sync so only one thing is ever lit.
   //   not planted  -> "seed" | "cutting"
-  //   trimming     -> Bonsai.kbPrune owns the cluster cursor
+  //   trimming     -> Omatree.kbPrune owns the cluster cursor
   //   settings open-> "settings" | "growback" | "startover"
   //   otherwise    -> "tree" | "water" | "lamp" | "feed" | "prune" | "settings"
   property bool kbActive: false
@@ -110,11 +110,11 @@ Panel {
 
   function kbTargets() {
     if (!root.ready) return []
-    if (!root.planted) return root.bonsaiService.seedAvailable
+    if (!root.planted) return root.treeService.seedAvailable
       ? ["berrySeed", "seed", "cutting"] : ["seed", "cutting"]
     if (settingsCol.open) {
       var s = ["settings"]
-      if (root.bonsaiService.prune && Object.keys(root.bonsaiService.prune).length > 0)
+      if (root.treeService.prune && Object.keys(root.treeService.prune).length > 0)
         s.push("growback")
       s.push("startover")
       return s
@@ -140,7 +140,7 @@ Panel {
   }
 
   function kbStep(delta) {
-    if (root.pruning) { bonsaiView.kbPruneCycle(delta); return }
+    if (root.pruning) { treeView.kbPruneCycle(delta); return }
     if (!root.kbActive) { kbWake(); return }
     var t = kbTargets()
     var i = t.indexOf(root.kbFocus)
@@ -149,31 +149,31 @@ Panel {
   }
 
   function kbHoriz(delta) {
-    if (root.pruning) { bonsaiView.kbPruneCycle(delta); return }
+    if (root.pruning) { treeView.kbPruneCycle(delta); return }
     if (!root.kbActive) { kbWake(); return }
-    if (root.kbFocus === "tree") { bonsaiView.stepYaw(delta > 0 ? 1 : -1); return }
+    if (root.kbFocus === "tree") { treeView.stepYaw(delta > 0 ? 1 : -1); return }
     if (!root.planted) kbStep(delta)
   }
 
   function kbActivate() {
-    if (root.pruning) { bonsaiView.kbPruneCut(); return }
+    if (root.pruning) { treeView.kbPruneCut(); return }
     if (!root.kbActive) { kbWake(); return }
     switch (root.kbFocus) {
     case "berrySeed":
-      if (root.ready && !root.planted) { root.bonsaiService.plant("berrySeed"); root.flashNote("berry seed sown") }
+      if (root.ready && !root.planted) { root.treeService.plant("berrySeed"); root.flashNote("berry seed sown") }
       break
     case "seed":
-      if (root.ready && !root.planted) { root.bonsaiService.plant("seed"); root.flashNote("seed sown") }
+      if (root.ready && !root.planted) { root.treeService.plant("seed"); root.flashNote("seed sown") }
       break
     case "cutting":
-      if (root.ready && !root.planted) { root.bonsaiService.plant("cutting"); root.flashNote("cutting struck") }
+      if (root.ready && !root.planted) { root.treeService.plant("cutting"); root.flashNote("cutting struck") }
       break
     case "water": root.runAction("water"); break
     case "lamp": root.runAction("lamp"); break
     case "feed": root.runAction("feed"); break
     case "prune":
-      bonsaiView.pruneMode = true
-      bonsaiView.kbPrune = 0
+      treeView.pruneMode = true
+      treeView.kbPrune = 0
       break
     case "settings":
       settingsCol.open = !settingsCol.open
@@ -181,8 +181,8 @@ Panel {
       break
     case "desktop":
       if (root.ready) {
-        var putOut = !root.bonsaiService.desktopEnabled
-        root.bonsaiService.setDesktop(putOut)
+        var putOut = !root.treeService.desktopEnabled
+        root.treeService.setDesktop(putOut)
         root.flashNote(putOut ? "out on your desktop" : "home in the bar")
       }
       break
@@ -192,7 +192,7 @@ Panel {
       root.companionAction(root.petHere && root.petService.sleeping ? "wake" : "pet")
       break
     case "growback":
-      if (root.ready) { root.bonsaiService.pruneReset(); root.flashNote("growing back") }
+      if (root.ready) { root.treeService.pruneReset(); root.flashNote("growing back") }
       break
     case "startover": replantConfirm.opened = true; break
     }
@@ -200,7 +200,7 @@ Panel {
 
   function kbEscape() {
     if (replantConfirm.opened) { replantConfirm.opened = false; return }
-    if (root.pruning) { bonsaiView.pruneMode = false; root.kbFocus = "prune"; return }
+    if (root.pruning) { treeView.pruneMode = false; root.kbFocus = "prune"; return }
     if (settingsCol.open) { settingsCol.open = false; root.kbFocus = "settings"; return }
     root.close()
   }
@@ -228,8 +228,8 @@ Panel {
   // dark you are switching on a grow lamp over the tree. Same toggle, same
   // state — but the tree is not pretending a lamp is the sun, or the other way
   // round.
-  readonly property bool byDaylight: root.ready && root.bonsaiService.daylight
-  readonly property bool lightOn: root.ready && root.bonsaiService.lampOn
+  readonly property bool byDaylight: root.ready && root.treeService.daylight
+  readonly property bool lightOn: root.ready && root.treeService.lampOn
   readonly property string lightWord: root.byDaylight
     ? (root.lightOn ? "close blinds" : "open blinds")
     : "lamp"
@@ -246,8 +246,8 @@ Panel {
 
   function needValue(action) {
     if (!root.ready) return 0
-    return ({ water: bonsaiService.thirst, lamp: bonsaiService.light,
-              feed: bonsaiService.soil, prune: bonsaiService.untidiness })[action] || 0
+    return ({ water: treeService.thirst, lamp: treeService.light,
+              feed: treeService.soil, prune: treeService.untidiness })[action] || 0
   }
   function needHint(action) {
     if (action === "lamp")
@@ -339,14 +339,14 @@ Panel {
 
         // ---- the tree, sitting in the panel (no frame) -----------------
         // Height follows the tree: a seedling gets a small box, a decades-old
-        // trunk pushes the panel tall (Bonsai caps itself at ~half the screen).
+        // trunk pushes the panel tall (Tree caps itself at ~half the screen).
         Item {
           id: house
           width: parent.width
           readonly property real _screenH: Screen.height > 0 ? Screen.height : 1200
           height: root.planted
             ? Math.max(Style.space(140),
-                Math.min(bonsaiView.implicitHeight + strip.height + Style.space(18), _screenH * 0.52))
+                Math.min(treeView.implicitHeight + strip.height + Style.space(18), _screenH * 0.52))
             : Style.space(190)
           Behavior on height { NumberAnimation { duration: 540; easing.type: Easing.OutSine } }
           clip: true
@@ -378,7 +378,7 @@ Panel {
               }
               Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.ready ? root.bonsaiService.treeName : "…"
+                text: root.ready ? root.treeService.treeName : "…"
                 color: Qt.alpha(root.fg, 0.8)
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
@@ -388,7 +388,7 @@ Panel {
               Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.ready
-                text: root.ready ? root.bonsaiService.genusLabel.toLowerCase() : ""
+                text: root.ready ? root.treeService.genusLabel.toLowerCase() : ""
                 color: Qt.alpha(root.fg, 0.4)
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
@@ -404,7 +404,7 @@ Panel {
               width: lampRow.width
               height: parent.height
               visible: !root.pruning
-              readonly property bool on: root.ready && root.bonsaiService.lampOn
+              readonly property bool on: root.ready && root.treeService.lampOn
               Row {
                 id: lampRow
                 anchors.verticalCenter: parent.verticalCenter
@@ -506,13 +506,13 @@ Panel {
                 anchors.fill: parent
                 anchors.margins: -Style.space(8)
                 cursorShape: Qt.PointingHandCursor
-                onClicked: bonsaiView.pruneMode = false
+                onClicked: treeView.pruneMode = false
               }
             }
           }
 
-          Bonsai {
-            id: bonsaiView
+          Omatree {
+            id: treeView
             inHousing: false
             anchors {
               top: strip.bottom; left: parent.left
@@ -522,26 +522,26 @@ Panel {
             anchors.topMargin: Style.space(2)
             visible: root.planted
             active: root.opened && root.planted
-            tree: root.planted ? root.bonsaiService.treeSpec : null
+            tree: root.planted ? root.treeService.treeSpec : null
             tint: root.accent
             textColor: root.fg
             bgColor: root.bg
             onPruneRequested: function (id) {
-              if (root.ready) root.bonsaiService.pruneNode(id)
+              if (root.ready) root.treeService.pruneNode(id)
             }
             onOrbitChanged: function (yaw) {
-              if (root.ready) root.bonsaiService.setOrbit(yaw)
+              if (root.ready) root.treeService.setOrbit(yaw)
             }
             // shallow zoom: scroll over the tree, persisted like the pose
-            zoom: root.ready ? root.bonsaiService.viewZoom : 1
+            zoom: root.ready ? root.treeService.viewZoom : 1
             onZoomChanged2: function (z) {
-              if (root.ready) root.bonsaiService.setZoom(z)
+              if (root.ready) root.treeService.setZoom(z)
             }
           }
 
           // keyboard focus ring on the tree — arrows turn the turntable
           Rectangle {
-            anchors.fill: bonsaiView
+            anchors.fill: treeView
             visible: root.kbActive && root.kbFocus === "tree"
               && root.planted && !root.pruning
             color: "transparent"
@@ -646,7 +646,7 @@ Panel {
             Repeater {
               model: {
                 var choices = []
-                if (root.bonsaiService && root.bonsaiService.seedAvailable)
+                if (root.treeService && root.treeService.seedAvailable)
                   choices.push({ how: "berrySeed", title: "FROM BERRY SEED", sub: "carry my own fruit forward — begin me again from it" })
                 choices.push(
                 { how: "seed", title: "FROM SEED", sub: "misho — start me from nothing, and wait with me" },
@@ -725,7 +725,7 @@ Panel {
                     root.kbFocus = card.modelData.how
                   onClicked: {
                     if (!root.opened || !root.ready || root.planted) return
-                    root.bonsaiService.plant(card.modelData.how)
+                    root.treeService.plant(card.modelData.how)
                     root.flashNote(card.modelData.how === "berrySeed" ? "berry seed sown"
                       : card.modelData.how === "cutting" ? "cutting struck" : "seed sown")
                   }
@@ -747,7 +747,7 @@ Panel {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             opacity: (root.flash === "" && root.hoverHint === "" && root.greetLine === "") ? 1 : 0
-            text: root.ready ? root.bonsaiService.moodLabel : "I am waking up…"
+            text: root.ready ? root.treeService.moodLabel : "I am waking up…"
             color: root.fg
             font.family: root.uiFont
             font.pixelSize: Style.font.body
@@ -814,7 +814,7 @@ Panel {
           visible: !settingsCol.open && root.planted && !root.pruning
           horizontalAlignment: Text.AlignHCenter
           text: root.planted
-            ? (root.bonsaiService.stageLabel + "   ·   " + root.bonsaiService.genusLabel
+            ? (root.treeService.stageLabel + "   ·   " + root.treeService.genusLabel
                + "   ·   " + root.ageLabel).toUpperCase()
             : ""
           color: Qt.alpha(root.fg, 0.45)
@@ -893,7 +893,7 @@ Panel {
                   Item {
                     width: parent.width
                     height: fruitLabel.implicitHeight + Style.space(8)
-                    visible: root.bonsaiService && root.bonsaiService.fruitVisible
+                    visible: root.treeService && root.treeService.fruitVisible
                     Text {
                       id: fruitLabel
                       anchors.left: parent.left
@@ -926,7 +926,7 @@ Panel {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.bonsaiService.harvestFruit()
+                        onClicked: root.treeService.harvestFruit()
                       }
                     }
                   }
@@ -974,7 +974,7 @@ Panel {
                     if (containsMouse && root.kbActive) root.kbFocus = meterRow.modelData.action
                   }
                   onClicked: {
-                    if (meterRow.modelData.action === "prune") bonsaiView.pruneMode = true
+                    if (meterRow.modelData.action === "prune") treeView.pruneMode = true
                     else root.runAction(meterRow.modelData.action)
                   }
                 }
@@ -1151,7 +1151,7 @@ Panel {
           // out, and there is nothing to set out before anything is planted.
           visible: !settingsCol.open && root.planted && !root.pruning && root.ready
           spacing: Style.space(4)
-          readonly property bool on: root.ready && root.bonsaiService.desktopEnabled
+          readonly property bool on: root.ready && root.treeService.desktopEnabled
           readonly property bool lit: deskMa.containsMouse
             || (root.kbActive && root.kbFocus === "desktop")
 
@@ -1202,8 +1202,8 @@ Panel {
               enabled: root.ready
               onContainsMouseChanged: if (containsMouse && root.kbActive) root.kbFocus = "desktop"
               onClicked: {
-                var putOut = !root.bonsaiService.desktopEnabled
-                root.bonsaiService.setDesktop(putOut)
+                var putOut = !root.treeService.desktopEnabled
+                root.treeService.setDesktop(putOut)
                 root.flashNote(putOut ? "out on your desktop" : "home in the bar")
               }
             }
@@ -1275,8 +1275,8 @@ Panel {
 
             Rectangle {
               id: growBackBtn
-              visible: root.ready && root.bonsaiService.prune
-                && Object.keys(root.bonsaiService.prune).length > 0
+              visible: root.ready && root.treeService.prune
+                && Object.keys(root.treeService.prune).length > 0
               readonly property bool lit: resetMa.containsMouse
                 || (root.kbActive && root.kbFocus === "growback")
               width: resetText.implicitWidth + Style.space(20)
@@ -1301,7 +1301,7 @@ Panel {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onContainsMouseChanged: if (containsMouse && root.kbActive) root.kbFocus = "growback"
-                onClicked: { root.bonsaiService.pruneReset(); root.flashNote("growing back") }
+                onClicked: { root.treeService.pruneReset(); root.flashNote("growing back") }
               }
             }
 
@@ -1343,20 +1343,20 @@ Panel {
       ConfirmDialog {
         id: replantConfirm
         anchors.fill: parent
-        message: "Begin again? " + (root.ready ? root.bonsaiService.treeName : "I")
+        message: "Begin again? " + (root.ready ? root.treeService.treeName : "I")
           + " will be retired, and you start me over from nothing."
         confirmText: "Start over"
         onConfirmed: {
           opened = false
           settingsCol.open = false
-          if (root.ready) root.bonsaiService.replant()
+          if (root.ready) root.treeService.replant()
         }
         onCanceled: opened = false
       }
     }
   }
 
-  readonly property string ageLabel: root.ready ? root.formatAge(root.bonsaiService) : ""
+  readonly property string ageLabel: root.ready ? root.formatAge(root.treeService) : ""
 
   function formatAge(svc) {
     var d = svc.wallAgeDays
@@ -1376,8 +1376,8 @@ Panel {
 
   function runAction(kind) {
     if (!root.ready) return
-    var svc = root.bonsaiService
-    if (kind === "water") { svc.waterNow(); root.flashNote("watered"); bonsaiView.water() }
+    var svc = root.treeService
+    if (kind === "water") { svc.waterNow(); root.flashNote("watered"); treeView.water() }
     else if (kind === "lamp") {
       svc.lampOn = !svc.lampOn
       if (svc.lampOn) {
@@ -1385,13 +1385,13 @@ Panel {
         // the sun — the light comes in from wherever the sun really is right
         // now. After dark the same beams run cold and quiet: some light still
         // reaches it, that is all.
-        bonsaiView.light()
+        treeView.light()
         root.flashNote(root.byDaylight ? "the blinds are open" : "the grow lamp warms me")
       } else {
         root.flashNote(root.byDaylight ? "the blinds are drawn" : "the lamp goes out")
       }
     }
-    else if (kind === "feed") { svc.feedNow(); root.flashNote("fed"); bonsaiView.feed() }
+    else if (kind === "feed") { svc.feedNow(); root.flashNote("fed"); treeView.feed() }
     else if (kind === "prune") { svc.pruneNow(); root.flashNote("pruned") }
   }
 
@@ -1400,16 +1400,16 @@ Panel {
   function _stageRank(s) { return ["seedling", "young", "adolescent", "mature"].indexOf(s) }
   function _stageWord(s) {
     return ({ seedling: "a seedling", young: "a young tree",
-              adolescent: "an adolescent", mature: "a mature bonsai" })[s] || s
+              adolescent: "an adolescent", mature: "a mature tree" })[s] || s
   }
   Connections {
-    target: root.ready ? root.bonsaiService : null
+    target: root.ready ? root.treeService : null
     function onStageChanged() {
-      var s = root.bonsaiService.stage
+      var s = root.treeService.stage
       if (root.planted && root._stage !== "" && s !== root._stage
           && root._stageRank(s) > root._stageRank(root._stage)) {
-        root.flashNote(root.bonsaiService.treeName + " is now " + root._stageWord(s))
-        bonsaiView.milestone()
+        root.flashNote(root.treeService.treeName + " is now " + root._stageWord(s))
+        treeView.milestone()
       }
       root._stage = s
     }

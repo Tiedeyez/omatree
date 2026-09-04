@@ -66,7 +66,7 @@ if (GENUS) GEN.genus = GENUS
 if (STYLE) GEN.style = STYLE
 if (GENUS) GEN.model = { juniper: { depth: 7, spread: .6, droop: .5, taper: .62, boughs: 3 }, maple: { depth: 6, spread: .82, droop: .2, taper: .66, boughs: 4 }, pine: { depth: 8, spread: .46, droop: .72, taper: .55, boughs: 3 } }[GENUS] || GEN.model
 
-// ---- palette (mirrors Bonsai.qml palette block) --------------------
+// ---- palette (mirrors Omatree.qml palette block) --------------------
 function hexHSV (hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '')
   if (!m) return { h: 0.33, s: 0.6, v: 0.8 }

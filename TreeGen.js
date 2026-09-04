@@ -1,4 +1,4 @@
-// TreeGen.js — procedural bonsai generator.
+// TreeGen.js — procedural tree generator.
 //
 // The tree is NOT random per frame. It is derived from a stable per-machine,
 // per-user seed, so every user gets a tree that is genuinely theirs — and no
@@ -46,7 +46,7 @@ var GENUS = {
 }
 var GENUS_NAMES = ["juniper", "maple", "pine"]
 
-// Bonsai training styles. Each biases the trunk line and where foliage sits.
+// Training styles. Each biases the trunk line and where foliage sits.
 // STYLES is the full set Grow.js understands (and dev/timelapse --style can pick);
 // STYLE_POOL is what identity actually rolls from — cascade/twin need more work
 // before they read well at bar size.

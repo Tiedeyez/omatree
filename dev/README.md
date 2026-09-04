@@ -27,7 +27,7 @@ Flags: `--seed N|me  --gallery N  --genus juniper|pine|maple  --style formal|inf
 `--maturity F  --age YEARS  --yaw RAD  --pitch RAD  --hour F  --thirst F  --health F  --lamp`
 `--light  --accent "#rrggbb"  --scale N  --art N  --case  --desktop`.
 
-`--case` and `--desktop` pin the yaw/pitch that `Bonsai.qml` uses for the cased
+`--case` and `--desktop` pin the yaw/pitch that `Omatree.qml` uses for the cased
 panel view and the desktop ornament respectively, so a change can be checked in
 the viewpoint it actually ships in. `--yaw`/`--pitch` override either.
 
@@ -65,7 +65,7 @@ Overrides only touch what's displayed; the persisted state file is left alone.
 
 ## State file
 
-`~/.local/state/omarchy/bonsai-state.json` carries `origin` (""|"seed"|"cutting"),
+`~/.local/state/omarchy/omatree-state.json` carries `origin` (""|"seed"|"cutting"),
 the one-time fruit lifecycle, and `seedAvailable` for a berry seed carried
 between pots on the same machine,
 `prune` (`{ clumpId: 0..1 }` — clump-id strings from Grow.js), and `yaw` (the
@@ -78,7 +78,7 @@ turntable pose). Clear `origin` to get the planting chooser back.
 - **Keyboard**: ↑↓/jk move between the tree and the water/lamp/feed/trim/settings
   targets, Enter/Space activates, letters w/f/p are shortcuts. In trim mode ↑↓
   pick a cluster, Enter cuts, Esc leaves trim (Esc again closes the panel).
-- The render loop is paced to ~30fps (`Bonsai.qml frameInterval`); the BMP
+- The render loop is paced to ~30fps (`Omatree.qml frameInterval`); the BMP
   re-encode is coalesced so a fast drag or held key never stalls input.
 - The **official Omarchy logo** from `https://omarchy.org/brand/omarchy-logo.svg` is etched into the front-facing wall of the pot so it reads cleanly in the desktop ornament and stays visible to the user.
 
@@ -133,4 +133,4 @@ is sleeping. All three join the panel keyboard cursor as `petfeed` / `petwash`
 
 `rescanPlugins` does **not** hot-reload plugin QML. Use `omarchy-restart-shell`
 (refuses while the session is locked — unlock first). Preview:
-`qs -p /usr/share/omarchy/shell ipc call shell summon jimmie.bonsai '{}'`
+`qs -p /usr/share/omarchy/shell ipc call shell summon tiedeyez.omatree '{}'`

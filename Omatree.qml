@@ -7,7 +7,7 @@ import "Grow.js" as Grow
 import "Paint.js" as Paint
 import "Raster.js" as Raster
 
-// The bonsai as a higher-res pixel-art turntable model. Grow.js builds a 3D
+// The tree as a higher-res pixel-art turntable model. Grow.js builds a 3D
 // skeleton from the machine seed; Paint.js projects + shades it into a draw
 // list; Raster.js encodes that as a BMP data URL for a plain <Image>, shown
 // scaled up with smooth:false for the chunky pixel look (Quickshell has no

@@ -3,18 +3,18 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 
-// Bar mark: a tiny living bonsai. Its canopy grows with the tree, sways in the
+// Bar mark: a tiny living tree. Its canopy grows with the tree, sways in the
 // breeze, sparkles when it's thriving and wilts amber when it needs you; after
 // dark a firefly blinks beside it. Left-click opens the glass house,
 // middle-click waters.
 BarWidget {
   id: root
-  moduleName: "jimmie.bonsai"
+  moduleName: "tiedeyez.omatree"
 
-  readonly property var bonsaiService: bar && bar.shell
+  readonly property var treeService: bar && bar.shell
     ? bar.shell.serviceFor(moduleName)
     : null
-  readonly property bool serviceReady: !!bonsaiService && bonsaiService.initialized === true
+  readonly property bool serviceReady: !!treeService && treeService.initialized === true
 
   // If the Omagotchi bar pet is installed, its creature comes to live in the
   // tree: it perches on the canopy here, and the panel grows a place to tend
@@ -45,7 +45,7 @@ BarWidget {
     if ("settings" in target) target.settings = root.settings
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
-    if ("bonsaiService" in target) target.bonsaiService = root.bonsaiService
+    if ("treeService" in target) target.treeService = root.treeService
     if ("petService" in target) target.petService = root.petService
   }
 
@@ -61,7 +61,7 @@ BarWidget {
 
   onBarChanged: Qt.callLater(injectPanel)
   onSettingsChanged: Qt.callLater(injectPanel)
-  onBonsaiServiceChanged: Qt.callLater(injectPanel)
+  onTreeServiceChanged: Qt.callLater(injectPanel)
   onPetServiceChanged: Qt.callLater(injectPanel)
   Component.onCompleted: Qt.callLater(injectPanel)
 
@@ -75,12 +75,12 @@ BarWidget {
 
   // ---- derived state -------------------------------------------------
   readonly property real maturity: root.serviceReady
-    ? (root.bonsaiService.effMaturity !== undefined
-       ? root.bonsaiService.effMaturity : root.bonsaiService.maturity)
+    ? (root.treeService.effMaturity !== undefined
+       ? root.treeService.effMaturity : root.treeService.maturity)
     : 0
-  readonly property real worst: root.serviceReady ? root.bonsaiService.worstNeed : 0
-  readonly property bool night: root.serviceReady ? !root.bonsaiService.daylight : false
-  readonly property bool lampOn: root.serviceReady && root.bonsaiService.lampOn
+  readonly property real worst: root.serviceReady ? root.treeService.worstNeed : 0
+  readonly property bool night: root.serviceReady ? !root.treeService.daylight : false
+  readonly property bool lampOn: root.serviceReady && root.treeService.lampOn
   readonly property bool thriving: root.serviceReady && root.worst < 20
 
   readonly property color canopyColor: !root.serviceReady ? Qt.alpha(button.foreground, 0.4)
@@ -132,7 +132,7 @@ BarWidget {
     hasVisualContent: true
     dimmed: !root.serviceReady
     tooltipText: root.serviceReady
-      ? root.bonsaiService.treeName + " · " + root.bonsaiService.moodLabel
+      ? root.treeService.treeName + " · " + root.treeService.moodLabel
       : "Omatree · waking…"
     fixedWidth: root.vertical ? -1 : Math.round(content.implicitWidth + scaledHorizontalMargin * 2)
     fixedHeight: root.vertical ? Math.round(content.implicitHeight + scaledVerticalPadding * 2) : -1
@@ -140,7 +140,7 @@ BarWidget {
     onPressed: function (buttonCode) {
       if (buttonCode === Qt.LeftButton) root.toggle()
       else if (buttonCode === Qt.MiddleButton && root.serviceReady) {
-        root.bonsaiService.waterNow()
+        root.treeService.waterNow()
         root.splash()
       }
     }
@@ -193,7 +193,7 @@ BarWidget {
       }
 
       // canopy = stacked pruned pads (bottom widest-ish, top narrowest),
-      // alternating a hair left/right for that bonsai asymmetry; they sway,
+      // alternating a hair left/right for that tree asymmetry; they sway,
       // more at the top.
       Repeater {
         model: content.pads
