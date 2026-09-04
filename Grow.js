@@ -115,6 +115,7 @@ function grow(gen, state) {
   var thirst = clamp(state.thirst || 0, 0, 1)
   var health = (state.health === 0 || state.health > 0) ? clamp(state.health, 0, 1) : 1
   var fruit = state.fruit === true
+  var berries = Math.max(0, Math.min(2, Math.round(state.berries || 0)))
   var prune = (state.prune && typeof state.prune === "object") ? state.prune : {}
   var ageYears = Math.max(0, state.ageYears || 0)
   var weather = state.weather && typeof state.weather === "object" ? state.weather : {}
@@ -454,7 +455,7 @@ function grow(gen, state) {
       needle: (gen && gen.genus) === "pine" || (gen && gen.genus) === "juniper",
       maturity: m, potR: pot.r,
       thirst: thirst, health: health,
-      fruit: fruit
+      fruit: fruit, berries: berries
     }
   }
 }

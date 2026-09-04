@@ -160,7 +160,7 @@ Panel {
     if (!root.kbActive) { kbWake(); return }
     switch (root.kbFocus) {
     case "berrySeed":
-      if (root.ready && !root.planted) { root.treeService.plant("berrySeed"); root.flashNote("berry seed sown") }
+      if (root.ready && !root.planted) { root.treeService.plant("berrySeed"); root.flashNote("heirloom seed sown") }
       break
     case "seed":
       if (root.ready && !root.planted) { root.treeService.plant("seed"); root.flashNote("seed sown") }
@@ -284,10 +284,27 @@ Panel {
     default: return "the creature in my branches is happy here"
     }
   }
+  // "food" only feeds from what the tree has actually grown: a real berry,
+  // picked and handed over. No berry ripe yet -> nothing to give, and the
+  // note says so rather than feeding for free.
+  function petRowLabel(row) {
+    if (row.act === "feed") {
+      var n = root.ready ? root.treeService.berries : 0
+      return "FOOD" + (n > 0 ? "  ·  " + n + (n === 1 ? " BERRY" : " BERRIES") : "")
+    }
+    return row.label.toUpperCase()
+  }
   function companionAction(kind) {
     if (!root.petHere) return
     var p = root.petService
-    if (kind === "feed") { p.feedNow(); root.flashNote("something in my branches is fed") }
+    if (kind === "feed") {
+      if (!root.treeService || !root.treeService.pickBerry()) {
+        root.flashNote("no berries ripe yet")
+        return
+      }
+      p.feedNow()
+      root.flashNote("gave it a berry")
+    }
     else if (kind === "wash") { p.scrub(25); root.flashNote("I rinsed it clean") }
     else if (kind === "pet") { p.petThePet(); root.flashNote("it settles against the bark") }
     else if (kind === "wake") { p.wakeUp(); root.flashNote("it stirs awake") }
@@ -647,7 +664,7 @@ Panel {
               model: {
                 var choices = []
                 if (root.treeService && root.treeService.seedAvailable)
-                  choices.push({ how: "berrySeed", title: "FROM BERRY SEED", sub: "carry my own fruit forward — begin me again from it" })
+                  choices.push({ how: "berrySeed", title: "FROM HEIRLOOM SEED", sub: "carry my own fruit forward — begin me again from it" })
                 choices.push(
                 { how: "seed", title: "FROM SEED", sub: "misho — start me from nothing, and wait with me" },
                 { how: "cutting", title: "FROM CUTTING", sub: "a rooted snip of me — I arrive already finding my shape" })
@@ -726,7 +743,7 @@ Panel {
                   onClicked: {
                     if (!root.opened || !root.ready || root.planted) return
                     root.treeService.plant(card.modelData.how)
-                    root.flashNote(card.modelData.how === "berrySeed" ? "berry seed sown"
+                    root.flashNote(card.modelData.how === "berrySeed" ? "heirloom seed sown"
                       : card.modelData.how === "cutting" ? "cutting struck" : "seed sown")
                   }
                 }
@@ -1041,8 +1058,8 @@ Panel {
               Text {
                 id: cLabel
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter }
-                width: Style.space(50)
-                text: petRow.modelData.label.toUpperCase()
+                width: Math.max(Style.space(50), implicitWidth)
+                text: root.petRowLabel(petRow.modelData)
                 color: Qt.alpha(root.fg, 0.78)
                 font.family: root.uiFont
                 font.pixelSize: Style.font.bodySmall

@@ -65,6 +65,15 @@ Item {
   readonly property bool fruitVisible:
     planted && fruitFound && !fruitHarvested
 
+  // Berries — unlike the once-a-lifetime heirloom fruit above, these are a
+  // small, recurring stash meant to be picked and handed straight to the
+  // companion living in the branches (see Panel.qml's feed action). They
+  // ripen slowly and only while the tree is genuinely well kept; see
+  // applyActiveMinute() for the accrual.
+  property int berries: 0
+  property real berryProgress: 0
+  readonly property int maxBerries: 2
+
   // How it was started: "" = not chosen yet (bare soil + a seed), "seed" = misho
   // (slow, from nothing), "cutting" = a rooted snip with a head start.
   property string origin: ""
@@ -256,6 +265,13 @@ Item {
       ? root.companion.careSum / root.companion.careCount : -1
   readonly property bool companionAsleep:
     !!(root.companion && root.companion.sleeping === true)
+  // The pet's own hunger, 0..100, read the way it reads itself — -1 when
+  // there is no companion. Used only to nudge how fast berries ripen: a
+  // hungry creature in the branches is the whole reason the tree grows them.
+  readonly property real companionHunger: {
+    var v = root.companion && root.companion.hungerLevel
+    return (v === 0 || v > 0) ? Math.max(0, Math.min(100, v)) : -1
+  }
   // Thriving, grown, and around long enough to count — a pet adopted an hour
   // ago should not shortcut the tree's fruit.
   readonly property bool companionThriving:
@@ -413,6 +429,7 @@ Item {
         // a weather provider may supply windKmph, humidity, and temperatureC.
         weather: devOverride && devOverride.weather ? devOverride.weather : localWeather,
         fruit: fruitVisible,
+        berries: berries,
         devClock: devHour
       }
     : null
@@ -461,8 +478,35 @@ Item {
     if (origin === "seed" && maturity < 0.14) g *= 0.45
     else if (origin === "cutting" && maturity < 0.4) g *= 1.4
     maturity = Math.min(1, maturity + g)
+
+    // Berries ripen on the same idea as growth — slow, and only earned —
+    // but gated on wellbeing rather than the rolling average, so a single
+    // bad stretch pauses it without erasing progress. A hungry companion
+    // pulls it faster, up to double: the tree noticing what it's for.
+    if (maturity > 0.30 && berries < maxBerries) {
+      var berryCare = Math.max(0, (wellbeing - 45) / 55)
+      var hungerPull = companionHunger >= 0 ? companionHunger / 100 : 0
+      berryProgress += 0.00028 * berryCare * (1 + hungerPull)
+      if (berryProgress >= 1) {
+        berryProgress = 0
+        berries += 1
+        flush()
+        notify("Omatree", treeName + " grew a berry.")
+      }
+    }
+
     lastActiveMs = nowMs
     checkFruit()
+  }
+
+  // Pick a ripe berry to hand to the companion. Returns false (and takes
+  // nothing) if none are ripe — feeding stays honest about what the tree
+  // actually has to give.
+  function pickBerry() {
+    if (berries <= 0) return false
+    berries -= 1
+    flush()
+    return true
   }
 
   // --- care -----------------------------------------------------------------
@@ -554,6 +598,8 @@ Item {
     origin = ""
     fruitFound = false
     fruitHarvested = false
+    berries = 0
+    berryProgress = 0
     prune = ({})
     yaw = 0
     thirstLevel = 0; lightLevel = 0; soilLevel = 0; untidinessLevel = 0
@@ -568,6 +614,8 @@ Item {
     origin = berrySeed ? "seed" : (how === "cutting" ? "cutting" : "seed")
     fruitFound = false
     fruitHarvested = false
+    berries = 0
+    berryProgress = 0
     if (berrySeed) seedAvailable = false
     plantedAtMs = Date.now()
     lastSeenMs = plantedAtMs
@@ -609,7 +657,9 @@ Item {
       untidinessLevel: untidinessLevel,
       fruitFound: fruitFound,
       fruitHarvested: fruitHarvested,
-      seedAvailable: seedAvailable
+      seedAvailable: seedAvailable,
+      berries: berries,
+      berryProgress: berryProgress
     }, null, 2) + "\n")
   }
 
@@ -691,6 +741,8 @@ Item {
       fruitFound = s.fruitFound === true
       fruitHarvested = s.fruitHarvested === true
       seedAvailable = s.seedAvailable === true
+      berries = Math.max(0, Math.min(maxBerries, Math.round(num(s.berries))))
+      berryProgress = Math.max(0, Math.min(1, num(s.berryProgress)))
       // a name once given is kept forever, even across generator changes
       if (typeof s.treeName === "string" && s.treeName !== "") treeName = s.treeName
     } catch (e) {

@@ -118,9 +118,13 @@ Item {
     var soil = Qt.hsva(woodH, grey ? 0.10 : 0.24, lite ? 0.40 : 0.34, 1)
     var u = Color.urgent
     var fruit = Qt.hsva(u.hsvSaturation < 0.12 ? leafH : u.hsvHue, 0.55, lite ? 0.72 : 0.9, 1)
+    // Berries stay a fixed, cool indigo rather than following the theme's
+    // urgent hue the way fruit does — they need to read as a distinct kind
+    // of thing (food) wherever fruit happens to land on any given theme.
+    var berry = Qt.hsva(0.70, 0.55, lite ? 0.62 : 0.80, 1)
     return {
       frond: root._rgb(frond), trunk: root._rgb(trunk), pot: root._rgb(potC),
-      soil: root._rgb(soil), fruit: root._rgb(fruit)
+      soil: root._rgb(soil), fruit: root._rgb(fruit), berry: root._rgb(berry)
     }
   }
   onPaletteChanged: root.fullFrame()
@@ -184,6 +188,7 @@ Item {
       root._bucket(t.ageYears || 0, 0.15), root._bucket(t.thirst, 0.12),
       root._bucket(t.health, 0.12), t.origin || "", JSON.stringify(t.prune || {})].join("|")
     key += "|" + (t.fruit === true ? "fruit" : "no-fruit")
+    key += "|b" + (t.berries || 0)
     var fresh = key.split("|")[0] !== root._builtKey.split("|")[0]
       || (t.origin || "") !== root._prevOrigin
     if (key !== root._builtKey) {
@@ -192,7 +197,7 @@ Item {
         maturity: t.maturity || 0, ageYears: t.ageYears || 0,
         thirst: t.thirst || 0, health: (t.health === 0 || t.health > 0) ? t.health : 1,
         prune: t.prune || {}, origin: t.origin || "", weather: t.weather || {},
-        fruit: t.fruit === true
+        fruit: t.fruit === true, berries: t.berries || 0
       })
       root._recomputeSize()
     }

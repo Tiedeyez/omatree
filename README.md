@@ -66,6 +66,11 @@ strip below the care meters where you can feed it, wash it, and rest a hand on
 its back, all from the same keyboard cursor as the tree's own care. No sound, no
 emotes; the tree just quietly notices.
 
+Feeding it is literal: a well-kept tree slowly grows a small stash of berries
+(up to two at a time, rendered right on the canopy, apart from the rare
+heirloom fruit) — faster while the creature is hungry — and "food" hands one
+over. No ripe berry, no feeding; the tree can't give what it hasn't grown.
+
 The pet's own bar pill keeps working and stays in step, so you can tuck it away
 and let the tree be the one place you tend both. Remove Omagotchi and the tree
 goes back to being just a tree.

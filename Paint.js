@@ -618,6 +618,17 @@ function build(sk, V) {
   for (var rr = 0; rr < rootOps.length; rr++) staticOps.push(rootOps[rr])
 
   // ---- foliage clumps (leaf layer) --------------------------------
+  // Berries pick their own clump slots the same deterministic way fruit
+  // picks its one — offset far enough from the fruit's index (and each
+  // other) that a fruiting tree's berries never land on the same clump.
+  var berryCount = Math.max(0, Math.min(2, sk.berries || 0))
+  var clumpN = Math.max(1, sk.clumps.length)
+  var fruitIdx = (sk.seed >>> 0) % clumpN
+  var berryIdx = [((sk.seed >>> 0) + 97) % clumpN, ((sk.seed >>> 0) + 233) % clumpN]
+  if (berryIdx[0] === fruitIdx) berryIdx[0] = (berryIdx[0] + 1) % clumpN
+  if (berryIdx[1] === fruitIdx || berryIdx[1] === berryIdx[0])
+    berryIdx[1] = (berryIdx[1] + 2) % clumpN
+
   var clumpDraw = []
   for (var c = 0; c < sk.clumps.length; c++) {
     var cl = sk.clumps[c]
@@ -645,6 +656,19 @@ function build(sk, V) {
         wobf: [0.02, -0.03, 0.01], base: pal.fruit,
         night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
         intensity: night ? 0.55 : sun.intensity, salt: salt + 201,
+        seedling: false, z: P.z + 0.2
+      })
+    }
+    for (var bi = 0; bi < berryCount; bi++) {
+      if (c !== berryIdx[bi]) continue
+      leafOps.push({
+        op: "blob", mat: "berry",
+        cx: P.x + rpx * (bi === 0 ? -0.55 : 0.15),
+        cy: P.y + rpx * (bi === 0 ? 0.30 : -0.45),
+        rx: Math.max(1.8, rpx * 0.15), ry: Math.max(1.8, rpx * 0.15),
+        wobf: [-0.02, 0.03, -0.01], base: pal.berry,
+        night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
+        intensity: night ? 0.55 : sun.intensity, salt: salt + 311 + bi * 7,
         seedling: false, z: P.z + 0.2
       })
     }
@@ -954,7 +978,7 @@ function blobPixel(op, x, y) {
     lum *= 0.78
   } else if (op.mat === "water") {
     lum = 0.76 + 0.20 * clamp(ndotl, 0, 1)
-  } else if (op.mat === "fruit") {
+  } else if (op.mat === "fruit" || op.mat === "berry") {
     lum = 0.82 + 0.28 * clamp(ndotl, 0, 1)
   }
 
@@ -964,14 +988,14 @@ function blobPixel(op, x, y) {
     else if (dap > 0.74) lum += 0.10
   } else if (op.mat === "water") {
     if (dap > 0.72) lum += 0.12
-  } else if (op.mat === "fruit" && dap > 0.62) {
+  } else if ((op.mat === "fruit" || op.mat === "berry") && dap > 0.62) {
     lum += 0.10
   } else if (dap < 0.22) lum -= 0.22             // inner leaf-gap shadow
   else if (dap > 0.74) lum += 0.16              // sun fleck
 
   var rim = rr > edge - 0.34
   if (rim) lum -= op.mat === "moss" ? 0.12
-    : (op.mat === "water" || op.mat === "fruit" ? 0.05 : OUTLINE)
+    : (op.mat === "water" || op.mat === "fruit" || op.mat === "berry" ? 0.05 : OUTLINE)
   if (op.night && rim && ndotl > 0.1) lum += 0.5    // moonlit edge
 
   var col = shade(base, lum, op.night, op.gold)
