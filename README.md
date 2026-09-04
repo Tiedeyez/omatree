@@ -98,6 +98,12 @@ None at runtime beyond the Omarchy Quattro shell (Quickshell / QML). The tree
 renders fully offline; nothing is fetched over the network. Node.js is used
 only by the optional developer scripts in `dev/`.
 
+## Changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md) for what changed in each version — the
+same thing `omarchy plugin update` shows you as a diff before it asks you to
+confirm, in plain language.
+
 ## Development
 
 See [`dev/README.md`](dev/README.md) for the render pipeline and the three ways
