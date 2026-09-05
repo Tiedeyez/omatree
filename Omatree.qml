@@ -189,6 +189,15 @@ Item {
       root._bucket(t.health, 0.12), t.origin || "", JSON.stringify(t.prune || {})].join("|")
     key += "|" + (t.fruit === true ? "fruit" : "no-fruit")
     key += "|b" + (t.berries || 0)
+    // A graft changes root.gen.genus/model in place (TreeGen.fuse()) without
+    // touching t.seed — nothing above this line would ever notice, and the
+    // tree would keep rendering its pre-graft shape until some unrelated
+    // change happened to invalidate the cache too. Model params are the
+    // actual geometry inputs, so they're what has to be fingerprinted.
+    var gm = (root.gen && root.gen.model) || {}
+    key += "|g:" + (root.gen ? root.gen.genus : "") + ":"
+      + [gm.taper, gm.boughs, gm.droop, gm.spread,
+         gm.hue === undefined ? "x" : gm.hue, gm.blossom ? 1 : 0].join(",")
     var fresh = key.split("|")[0] !== root._builtKey.split("|")[0]
       || (t.origin || "") !== root._prevOrigin
     if (key !== root._builtKey) {

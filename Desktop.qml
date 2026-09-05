@@ -352,6 +352,19 @@ PanelWindow {
       svc.lampOn = !svc.lampOn
       if (svc.lampOn) tree.light()
     }
+    // Same rule as the panel's companion strip: a real berry, or nothing —
+    // feeding is never free here either, and it's a live call on the pet's
+    // own service (svc.petService), never a write to its state file.
+    else if (kind === "feed" && svc.petHere) {
+      if (svc.pickBerry()) svc.petService.feedNow()
+    }
+    // Grafting needs the full walkthrough (a file to pick, a preview to
+    // confirm) — too much for this small popup, so this just hands off to
+    // the panel's own flow rather than building a second copy of it here.
+    else if (kind === "graft") {
+      svc.pendingGraftOpen = true
+      root.summonPanel()
+    }
     root.quickMenuOpen = false
   }
 
@@ -387,11 +400,20 @@ PanelWindow {
       property real btnW: 52
 
       Repeater {
-        model: [
-          { key: "water", label: "WATER" },
-          { key: "trim", label: "TRIM" },
-          { key: "blinds", label: "LIGHT" }
-        ]
+        // feed only when there's a real companion to feed; graft only shown
+        // once there's a tree to offer it to at all (root.ready) — matches
+        // the panel's own "only what applies" restraint rather than always
+        // showing every action regardless of whether it does anything.
+        model: {
+          var list = [
+            { key: "water", label: "WATER" },
+            { key: "trim", label: "TRIM" },
+            { key: "blinds", label: "LIGHT" }
+          ]
+          if (root.ready && root.treeService.petHere) list.push({ key: "feed", label: "FEED" })
+          if (root.ready) list.push({ key: "graft", label: "GRAFT" })
+          return list
+        }
 
         Rectangle {
           id: quickAction

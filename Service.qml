@@ -25,6 +25,25 @@ Item {
   property var shell: null
   property var manifest: null
 
+  // The shell wires `shell` in directly (see shell.qml's plugin loader —
+  // `if ("shell" in inst) inst.shell = shell`), the exact same object
+  // BarWidget.qml reaches through `bar.shell`. That means Desktop.qml
+  // (loaded from HERE, by a Loader, not from the bar's own widget tree —
+  // it has no `bar` of its own to read) can reach the companion's live
+  // service too, through this, for anything that has to be a real method
+  // call rather than a file read (feeding it, specifically — writing to its
+  // state file directly would race the pet's own Service, which rewrites
+  // that file every active minute; see companionFile's read-only comment).
+  readonly property var petService: shell ? shell.serviceFor("slcode777.omagotchi") : null
+  readonly property bool petHere: !!petService && petService.initialized === true
+
+  // A quiet handoff flag: Desktop.qml's "graft" quick-action has no direct
+  // reference to the Panel (it opens it by shelling out to `omarchy-shell
+  // summon`, a separate window entirely) — this is the one thing they both
+  // actually share. Panel.qml checks it the moment it opens and clears it
+  // immediately either way, so it can never re-trigger on a later open.
+  property bool pendingGraftOpen: false
+
   readonly property string stateHome: Quickshell.env("XDG_STATE_HOME")
     || ((Quickshell.env("HOME") || "") + "/.local/state")
   readonly property string stateDir: stateHome + "/omarchy"
@@ -73,6 +92,75 @@ Item {
   property int berries: 0
   property real berryProgress: 0
   readonly property int maxBerries: 2
+
+  // Grafting — a tree can ACCEPT up to 3 grafts, each a small
+  // .omatree-graft file someone else exported. Persisted as the RECIPE
+  // (whatever TreeGen.importGraft() itself accepts: a flat fresh-exotic
+  // leaf, or a full re-shared {base, grafts} sub-tree), never the resulting
+  // numbers — wake() rebuilds `genesis` by replaying this list through
+  // TreeGen.fuse() every time, the same "recompute, never trust a stored
+  // result" rule the graft-file format follows end to end. See TreeGen.js's
+  // own header comment for the fuller reasoning (including what this can
+  // and can't actually prove about a claimed lineage).
+  property var graftLineage: []
+  readonly property int grafts: graftLineage.length
+  readonly property int maxGrafts: 3
+  readonly property bool graftsAvailable: planted && grafts < maxGrafts
+  // The tree's own solo genus (juniper/maple/pine) before any graft —
+  // set fresh by every _rebuildGenesis() call, needed so THIS tree can
+  // itself be exported as a donor later (see exportGraftFile()).
+  property string baseGenus: ""
+
+  // Re-derive `genesis`/`genusLabel`/`baseGenus` from the real identity plus
+  // whatever grafts are on file. Called once at wake() and again right
+  // after a graft is accepted or the tree is replanted — never partially
+  // applied, always the base tree replayed through the whole lineage fresh.
+  function _rebuildGenesis() {
+    var g = TreeGen.genesis(machineIdLoaded, userName + "@" + hostName)
+    baseGenus = g.genus
+    for (var i = 0; i < graftLineage.length && i < maxGrafts; i++) {
+      var donor = TreeGen.importGraft(graftLineage[i])
+      if (donor) g = TreeGen.fuse(g, donor, undefined)
+    }
+    genesis = g
+    genusLabel = g.genus
+  }
+
+  // Accept a graft file already parsed to a plain object (Panel.qml reads
+  // the JSON off disk; this only ever sees the parsed result, never a raw
+  // string). Rejects anything TreeGen.importGraft() itself would reject —
+  // wrong shape, an unknown base genus, a chain past the depth/size caps —
+  // and the 3-graft cap, all before anything is persisted. Returns true on
+  // success so the panel can show a clear yes/no rather than guessing.
+  function acceptGraft(parsedGraftFile) {
+    if (!graftsAvailable) return false
+    var donor = TreeGen.importGraft(parsedGraftFile)
+    if (!donor) return false
+    // Store the RAW file exactly as received, not the reconstructed donor —
+    // it gets re-validated and re-replayed by importGraft() every time this
+    // tree's own genesis is rebuilt, never trusted as a settled result.
+    var lineage = graftLineage.slice()
+    lineage.push(parsedGraftFile)
+    graftLineage = lineage
+    _rebuildGenesis()
+    flush()
+    notify("Omatree", treeName + " took a graft" + (donor.treeName ? " from " + donor.treeName : "") + ".")
+    return true
+  }
+
+  // Export is free and unlimited — nothing here is spent, unlike accepting
+  // one. Every tree can export, grafted or not: the base uses a public,
+  // non-identifying alias for the real identity seed (TreeGen.graftAliasSeed
+  // — never the tree's actual seed), and any accepted grafts ride along as
+  // a nested sub-tree, so the exported file carries this tree's whole real
+  // lineage forward, not just a snapshot. Returns the plain object
+  // Panel.qml writes to disk itself (this service never touches the
+  // filesystem outside its own state/save path).
+  function exportGraftFile() {
+    if (!planted || baseGenus === "") return null
+    var aliasSeed = TreeGen.graftAliasSeed(machineIdLoaded, userName + "@" + hostName, baseGenus)
+    return TreeGen.exportGraft(baseGenus, aliasSeed, graftLineage, treeName)
+  }
 
   // How it was started: "" = not chosen yet (bare soil + a seed), "seed" = misho
   // (slow, from nothing), "cutting" = a rooted snip with a head start.
@@ -600,10 +688,12 @@ Item {
     fruitHarvested = false
     berries = 0
     berryProgress = 0
+    graftLineage = []
     prune = ({})
     yaw = 0
     thirstLevel = 0; lightLevel = 0; soilLevel = 0; untidinessLevel = 0
     careSum = 0; careCount = 0
+    _rebuildGenesis()
     flush()
   }
 
@@ -616,6 +706,7 @@ Item {
     fruitHarvested = false
     berries = 0
     berryProgress = 0
+    graftLineage = []
     if (berrySeed) seedAvailable = false
     plantedAtMs = Date.now()
     lastSeenMs = plantedAtMs
@@ -627,6 +718,7 @@ Item {
     prune = ({})
     thirstLevel = 0; lightLevel = 0; soilLevel = 0; untidinessLevel = 0
     careSum = 0; careCount = 0
+    _rebuildGenesis()
     flush()
     notify("Omatree",
       origin === "cutting"
@@ -659,7 +751,8 @@ Item {
       fruitHarvested: fruitHarvested,
       seedAvailable: seedAvailable,
       berries: berries,
-      berryProgress: berryProgress
+      berryProgress: berryProgress,
+      graftLineage: graftLineage
     }, null, 2) + "\n")
   }
 
@@ -671,6 +764,59 @@ Item {
     watchChanges: false
     atomicWrites: true
     printErrors: false
+  }
+
+  // ---- grafting: P2P file exchange, no network --------------------------
+  // The user drops a received .omatree-graft.json into graftInboxDir
+  // (however it got to them — chat, AirDrop, USB) and Panel.qml lists what's
+  // there; exporting writes to graftOutboxDir so they know where to find the
+  // file to hand to someone else. This service never watches the inbox
+  // itself — Panel.qml owns the live directory listing (Qt.labs.folderlistmodel),
+  // this only ever reads/writes files it's told about directly.
+  readonly property string graftInboxDir: stateDir + "/omatree-grafts/inbox"
+  readonly property string graftOutboxDir: stateDir + "/omatree-grafts/outbox"
+  // Same instinct as maxStateBytes: reject before JSON.parse ever runs, not
+  // after — a huge file is a cheap thing to refuse and an expensive thing
+  // to parse. A legitimate chain (depth 4, 40 nodes) is a few KB at most.
+  readonly property int maxGraftFileBytes: 16384
+
+  function parseGraftFile(rawText) {
+    if (typeof rawText !== "string" || rawText.length === 0) return null
+    if (rawText.length >= maxGraftFileBytes) return null
+    try { return JSON.parse(rawText) } catch (e) { return null }
+  }
+
+  // A read-only look at what a parsed graft file WOULD do, before Panel.qml
+  // asks the user to confirm anything — reconstructs the donor the same way
+  // acceptGraft() would but changes nothing.
+  function previewGraft(parsedData) {
+    var donor = TreeGen.importGraft(parsedData)
+    if (!donor) return null
+    return { genus: donor.genus, treeName: donor.treeName || "" }
+  }
+
+  FileView {
+    id: graftOutFile
+    path: root._graftOutPath
+    blockLoading: true
+    atomicWrites: true
+    printErrors: false
+  }
+  property string _graftOutPath: ""
+
+  // Writes this tree's current export to the outbox and returns the path
+  // written (or "" on failure) so Panel.qml can show the user where to find
+  // it. mkdir -p first — FileView won't create parent directories itself.
+  function writeGraftExport() {
+    var file = exportGraftFile()
+    if (!file) return ""
+    Quickshell.execDetached(["mkdir", "-p", graftOutboxDir])
+    var safe = (treeName || "tree").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 30) || "tree"
+    var path = graftOutboxDir + "/" + safe + "-" + baseGenus + "-" + Date.now() + ".omatree-graft.json"
+    _graftOutPath = path
+    graftOutFile.setText(JSON.stringify(file, null, 2) + "\n")
+    notify("Omatree", "A cutting of " + treeName + " is ready to share.")
+    return path
   }
 
   // --- waking up ----------------------------------------------------------
@@ -743,11 +889,15 @@ Item {
       seedAvailable = s.seedAvailable === true
       berries = Math.max(0, Math.min(maxBerries, Math.round(num(s.berries))))
       berryProgress = Math.max(0, Math.min(1, num(s.berryProgress)))
+      // Kept as raw recipes, capped defensively at load time too (not just
+      // in acceptGraft()) in case a save file was ever hand-edited.
+      if (Array.isArray(s.graftLineage)) graftLineage = s.graftLineage.slice(0, maxGrafts)
       // a name once given is kept forever, even across generator changes
       if (typeof s.treeName === "string" && s.treeName !== "") treeName = s.treeName
     } catch (e) {
       saveProblem = "not valid JSON (" + e + ")"
     }
+    _rebuildGenesis()          // replay any saved grafts onto the base identity
 
     var fresh = plantedAtMs === 0 && origin === ""
     if (fresh) {

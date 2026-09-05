@@ -143,6 +143,13 @@ BarWidget {
         root.treeService.waterNow()
         root.splash()
       }
+      // Right-click: the one thing "set on desktop" is common enough to
+      // deserve a single command from the bar itself, rather than needing
+      // the full panel open every time you just want to flip it.
+      else if (buttonCode === Qt.RightButton && root.serviceReady && root.treeService.planted) {
+        root.treeService.setDesktop(!root.treeService.desktopEnabled)
+        root.splash()
+      }
     }
 
     // The mark, drawn with shapes so it stays crisp at any bar size: a rounded

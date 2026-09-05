@@ -2,6 +2,8 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
+import Qt.labs.folderlistmodel
 import qs.Commons
 import qs.Ui
 
@@ -54,6 +56,14 @@ Panel {
   onOpenedChanged: {
     if (!opened) { hoverHint = ""; kbActive = false; kbFocus = ""; return }
     Qt.callLater(root.playGreeting)
+    // The desktop tile's "graft" quick-action summons the panel via a
+    // separate window entirely (Quickshell.execDetached), so this flag on
+    // the shared service is the only handoff available — cleared either
+    // way so it can never fire again on a later, unrelated open.
+    if (root.ready && root.treeService.pendingGraftOpen) {
+      root.treeService.pendingGraftOpen = false
+      Qt.callLater(function () { graftFlow.opened = true })
+    }
   }
   onPruningChanged: if (pruning) hoverHint = ""
   onReadyChanged: if (ready && opened) Qt.callLater(root.playGreeting)
@@ -119,7 +129,7 @@ Panel {
       s.push("startover")
       return s
     }
-    var main = ["tree", "water", "lamp", "feed", "prune"]
+    var main = ["tree", "water", "lamp", "feed", "prune", "graft"]
     // the companion, when the pet is installed: its rows join the cursor in
     // reading order, right where they sit under the tree's own meters
     if (root.petHere) {
@@ -140,6 +150,7 @@ Panel {
   }
 
   function kbStep(delta) {
+    if (graftFlow.opened) { graftFlow.kbMove(delta); return }
     if (root.pruning) { treeView.kbPruneCycle(delta); return }
     if (!root.kbActive) { kbWake(); return }
     var t = kbTargets()
@@ -149,6 +160,7 @@ Panel {
   }
 
   function kbHoriz(delta) {
+    if (graftFlow.opened) { graftFlow.kbMove(delta); return }
     if (root.pruning) { treeView.kbPruneCycle(delta); return }
     if (!root.kbActive) { kbWake(); return }
     if (root.kbFocus === "tree") { treeView.stepYaw(delta > 0 ? 1 : -1); return }
@@ -156,6 +168,7 @@ Panel {
   }
 
   function kbActivate() {
+    if (graftFlow.opened) { graftFlow.kbActivate(); return }
     if (root.pruning) { treeView.kbPruneCut(); return }
     if (!root.kbActive) { kbWake(); return }
     switch (root.kbFocus) {
@@ -175,6 +188,7 @@ Panel {
       treeView.pruneMode = true
       treeView.kbPrune = 0
       break
+    case "graft": graftFlow.opened = true; break
     case "settings":
       settingsCol.open = !settingsCol.open
       root.kbFocus = "settings"
@@ -199,6 +213,7 @@ Panel {
   }
 
   function kbEscape() {
+    if (graftFlow.opened) { graftFlow.kbBack(); return }
     if (replantConfirm.opened) { replantConfirm.opened = false; return }
     if (root.pruning) { treeView.pruneMode = false; root.kbFocus = "prune"; return }
     if (settingsCol.open) { settingsCol.open = false; root.kbFocus = "settings"; return }
@@ -1000,6 +1015,54 @@ Panel {
           }
         }
 
+        // ---- grafting: a submenu right where trimming lives -------------
+        // Grafting shapes the tree the same way pruning does — it isn't a
+        // care need with a meter, it's an occasional, deliberate act, so it
+        // sits directly under the trim row rather than among the four
+        // meters. "give a cutting" is free and unlimited; "graft one in" is
+        // capped at 3 and walks through choosing a file.
+        Item {
+          width: parent.width
+          height: graftLabel.implicitHeight + Style.space(6)
+          visible: !settingsCol.open && root.planted && !root.pruning && root.ready
+
+          Text {
+            id: graftLabel
+            anchors.left: parent.left
+            text: root.ready
+              ? "GRAFTS  ·  " + root.treeService.grafts + "/" + root.treeService.maxGrafts
+                + (root.treeService.grafts > 0 ? "   ·   " + root.treeService.genusLabel : "")
+              : ""
+            color: Qt.alpha(root.fg, 0.55)
+            font.family: root.uiFont
+            font.pixelSize: Style.font.bodySmall
+            font.letterSpacing: 1.2
+            renderType: Text.QtRendering
+          }
+
+          Text {
+            id: graftLinkText
+            anchors.right: parent.right
+            readonly property bool lit: graftLinkMa.containsMouse
+              || (root.kbActive && root.kbFocus === "graft")
+            text: "▸ graft"
+            color: Qt.alpha(root.accent, lit ? 0.95 : 0.75)
+            font.family: root.uiFont
+            font.pixelSize: root.capSize
+            font.letterSpacing: 1
+            renderType: Text.QtRendering
+            MouseArea {
+              id: graftLinkMa
+              anchors.fill: parent
+              anchors.margins: -Style.space(8)
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onContainsMouseChanged: if (containsMouse && root.kbActive) root.kbFocus = "graft"
+              onClicked: graftFlow.opened = true
+            }
+          }
+        }
+
         // ---- the companion ---------------------------------------
         // Only when the Omagotchi bar pet is installed: its creature has come
         // to live in the tree. Tend it here — feed, wash, a hand on its back —
@@ -1369,6 +1432,426 @@ Panel {
           if (root.ready) root.treeService.replant()
         }
         onCanceled: opened = false
+      }
+
+      // ---- grafting: give a cutting, or graft one in --------------------
+      // A small walkthrough, not a single button — matches how planting
+      // (seed vs cutting vs heirloom) is already a chooser rather than a
+      // dropdown. Reading the inbox is entirely local (Qt.labs.folderlistmodel
+      // over a plain directory): nothing here ever touches a network.
+      Item {
+        id: graftFlow
+        anchors.fill: parent
+        visible: opened
+        property bool opened: false
+        property string step: "choose"   // choose | give | pick | preview
+        property var pendingParsed: null
+        property var pendingPreview: null
+        property string exportedPath: ""
+        property string pickError: ""
+        // A second, small cursor nested inside the panel's own kbFocus
+        // system — same idea as treeView.kbPrune's own cluster cursor while
+        // pruning: the main cursor hands off entirely while this is open
+        // (see kbStep/kbHoriz/kbActivate/kbEscape above) rather than the
+        // wizard being mouse-only.
+        property int kbIndex: 0
+        // FolderListModel genuinely flickers Ready-with-count-0 before its
+        // real listing settles (measured live: status cycles Ready(0) ->
+        // Loading(0) -> Ready(0) -> count:2, all within one open) — real
+        // enough to show a real user "nothing waiting" for a moment on a
+        // populated inbox. This is a floor, not a real load time: it only
+        // delays showing the EMPTY state, never the real listing once it
+        // arrives (that binds directly off inboxModel.count, no gate).
+        property bool inboxSettling: false
+        Timer { id: inboxSettleTimer; interval: 350; onTriggered: graftFlow.inboxSettling = false }
+
+        onOpenedChanged: if (opened) {
+          step = "choose"; pendingParsed = null; pendingPreview = null
+          exportedPath = ""; pickError = ""; kbIndex = 0
+        }
+        onStepChanged: {
+          kbIndex = 0
+          if (step === "pick") { inboxSettling = true; inboxSettleTimer.restart() }
+        }
+
+        function close() { opened = false }
+
+        // Reads straight off the Repeater's own live delegate rather than a
+        // separately-tracked index->path table — that table raced
+        // FolderListModel's own reload cycles (measured live: it flickers
+        // Loading/Ready more than once per open, destroying and recreating
+        // delegates each time), so a path recorded a moment earlier could
+        // already belong to a delegate that no longer exists. itemAt() is
+        // never stale because there is nothing to go stale — it's read at
+        // the moment of use, not cached ahead of it.
+        function pickFile(idx) {
+          var item = inboxRepeater.itemAt(idx)
+          if (!item) return
+          var path = item.filePath
+          if (!path) return
+          graftPickFile.path = path
+          var raw = ""
+          try { raw = graftPickFile.text() || "" } catch (e) {}
+          var parsed = root.treeService.parseGraftFile(raw)
+          var preview = parsed ? root.treeService.previewGraft(parsed) : null
+          if (!preview) { pickError = "that file isn't a graft this version understands"; return }
+          pickError = ""
+          pendingParsed = parsed
+          pendingPreview = preview
+          step = "preview"
+        }
+
+        function confirmGraft() {
+          if (root.treeService.acceptGraft(pendingParsed)) {
+            root.flashNote("took a graft")
+            close()
+          } else {
+            pickError = "couldn't take that graft"
+            step = "pick"
+          }
+        }
+
+        function kbCount() {
+          if (step === "choose") return 2
+          if (step === "pick") return inboxModel.count
+          if (step === "preview") return 2
+          return 1
+        }
+        function kbMove(delta) {
+          var n = kbCount()
+          if (n <= 0) return
+          kbIndex = ((kbIndex + delta) % n + n) % n
+        }
+        function kbActivate() {
+          if (step === "choose") {
+            var how = kbIndex === 0 ? "give" : "pick"
+            if (how === "pick" && root.ready && !root.treeService.graftsAvailable) return
+            step = how
+          } else if (step === "give") {
+            if (exportedPath === "") exportedPath = root.treeService.writeGraftExport()
+            else close()
+          } else if (step === "pick") {
+            pickFile(kbIndex)
+          } else if (step === "preview") {
+            if (kbIndex === 0) confirmGraft(); else step = "pick"
+          }
+        }
+        function kbBack() {
+          if (step === "preview") { step = "pick"; return }
+          if (step !== "choose") { step = "choose"; return }
+          close()
+        }
+
+        Rectangle { anchors.fill: parent; color: Qt.alpha(root.bg, 0.94) }
+
+        MouseArea { anchors.fill: parent }   // swallow clicks to whatever's behind
+
+        // close (x)
+        Text {
+          anchors { right: parent.right; top: parent.top; margins: Style.space(14) }
+          text: "✕"
+          color: Qt.alpha(root.fg, closeMa.containsMouse ? 0.9 : 0.5)
+          font.family: root.uiFont
+          font.pixelSize: Style.font.bodySmall
+          MouseArea {
+            id: closeMa
+            anchors.fill: parent
+            anchors.margins: -Style.space(10)
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: graftFlow.close()
+          }
+        }
+
+        Column {
+          anchors.centerIn: parent
+          width: parent.width - Style.space(64)
+          spacing: Style.space(18)
+
+          Text {
+            width: parent.width
+            horizontalAlignment: Text.AlignHCenter
+            text: "GRAFTING"
+            color: Qt.alpha(root.fg, 0.5)
+            font.family: root.uiFont
+            font.pixelSize: Style.font.bodySmall
+            font.letterSpacing: 3
+            renderType: Text.QtRendering
+          }
+
+          // ---- step: choose ------------------------------------------
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: graftFlow.step === "choose"
+
+            Repeater {
+              model: [
+                { how: "give", title: "GIVE A CUTTING", sub: "export " + (root.ready ? root.treeService.treeName : "this tree") + " — free, unlimited, share it any way you like" },
+                { how: "pick", title: "GRAFT ONE IN", sub: root.ready && root.treeService.graftsAvailable
+                    ? "bring in a cutting someone gave you — " + (root.treeService.maxGrafts - root.treeService.grafts) + " of " + root.treeService.maxGrafts + " slots left"
+                    : "no slots left — this tree already carries " + (root.ready ? root.treeService.maxGrafts : 3) + " grafts" }
+              ]
+              delegate: Rectangle {
+                id: card
+                required property var modelData
+                required property int index
+                readonly property bool disabledCard: card.modelData.how === "pick" && root.ready && !root.treeService.graftsAvailable
+                readonly property bool lit: (cardMa.containsMouse || graftFlow.kbIndex === card.index) && !disabledCard
+                width: parent.width
+                height: cardCol.implicitHeight + Style.space(20)
+                radius: root.rad > 0 ? Style.space(8) : 0
+                color: lit ? Qt.alpha(root.accent, 0.10) : "transparent"
+                border.width: 1
+                border.color: Qt.alpha(root.accent, disabledCard ? 0.15 : (lit ? 0.55 : 0.28))
+                opacity: disabledCard ? 0.45 : 1
+
+                Column {
+                  id: cardCol
+                  anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter }
+                  anchors.margins: Style.space(14)
+                  spacing: Style.space(4)
+                  Text {
+                    text: card.modelData.title
+                    color: root.accent
+                    font.family: root.uiFont
+                    font.pixelSize: root.capSize
+                    font.letterSpacing: 1.5
+                    renderType: Text.QtRendering
+                  }
+                  Text {
+                    width: cardCol.width
+                    text: card.modelData.sub
+                    wrapMode: Text.Wrap
+                    color: Qt.alpha(root.fg, 0.6)
+                    font.family: root.uiFont
+                    font.pixelSize: Style.font.bodySmall
+                    renderType: Text.QtRendering
+                  }
+                }
+                MouseArea {
+                  id: cardMa
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: card.disabledCard ? Qt.ArrowCursor : Qt.PointingHandCursor
+                  onContainsMouseChanged: if (containsMouse) graftFlow.kbIndex = card.index
+                  onClicked: if (!card.disabledCard) graftFlow.step = card.modelData.how
+                }
+              }
+            }
+          }
+
+          // ---- step: give ---------------------------------------------
+          Column {
+            width: parent.width
+            spacing: Style.space(12)
+            visible: graftFlow.step === "give"
+
+            Text {
+              width: parent.width
+              wrapMode: Text.Wrap
+              horizontalAlignment: Text.AlignHCenter
+              text: graftFlow.exportedPath === ""
+                ? "writes a small file — nothing but genus and shape, never your machine or name."
+                : "written to:\n" + graftFlow.exportedPath
+              color: Qt.alpha(root.fg, 0.65)
+              font.family: root.uiFont
+              font.pixelSize: Style.font.bodySmall
+              renderType: Text.QtRendering
+            }
+
+            Rectangle {
+              anchors.horizontalCenter: parent.horizontalCenter
+              width: writeText.implicitWidth + Style.space(24)
+              height: Style.space(26)
+              radius: root.rad > 0 ? height / 2 : 0
+              visible: graftFlow.exportedPath === ""
+              color: writeMa.containsMouse ? Qt.alpha(root.accent, 0.16) : "transparent"
+              border.width: 1
+              border.color: Qt.alpha(root.accent, writeMa.containsMouse ? 0.6 : 0.32)
+              Text {
+                id: writeText
+                anchors.centerIn: parent
+                text: "▸ write the cutting"
+                color: root.accent
+                font.family: root.uiFont
+                font.pixelSize: root.capSize
+                font.letterSpacing: 1
+                renderType: Text.QtRendering
+              }
+              MouseArea {
+                id: writeMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: graftFlow.exportedPath = root.treeService.writeGraftExport()
+              }
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              visible: graftFlow.exportedPath !== ""
+              text: "▸ done"
+              color: Qt.alpha(root.accent, doneMa.containsMouse ? 0.95 : 0.75)
+              font.family: root.uiFont
+              font.pixelSize: root.capSize
+              font.letterSpacing: 1
+              renderType: Text.QtRendering
+              MouseArea {
+                id: doneMa
+                anchors.fill: parent
+                anchors.margins: -Style.space(8)
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: graftFlow.close()
+              }
+            }
+          }
+
+          // ---- step: pick — what's sitting in the inbox ----------------
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: graftFlow.step === "pick"
+
+            FolderListModel {
+              id: inboxModel
+              folder: root.ready ? "file://" + root.treeService.graftInboxDir : ""
+              nameFilters: ["*.omatree-graft.json", "*.json"]
+              showDirs: false
+              sortField: FolderListModel.Time
+              sortReversed: true
+            }
+
+            Text {
+              width: parent.width
+              wrapMode: Text.Wrap
+              horizontalAlignment: Text.AlignHCenter
+              visible: inboxModel.count === 0 && !graftFlow.inboxSettling
+              text: "nothing waiting — drop a .omatree-graft.json someone gave you into\n"
+                + (root.ready ? root.treeService.graftInboxDir : "")
+              color: Qt.alpha(root.fg, 0.55)
+              font.family: root.uiFont
+              font.pixelSize: Style.font.bodySmall
+              renderType: Text.QtRendering
+            }
+
+            Text {
+              width: parent.width
+              horizontalAlignment: Text.AlignHCenter
+              visible: graftFlow.pickError !== ""
+              text: graftFlow.pickError
+              color: root.warn
+              font.family: root.uiFont
+              font.pixelSize: Style.font.bodySmall
+              renderType: Text.QtRendering
+            }
+
+            Repeater {
+              id: inboxRepeater
+              model: inboxModel
+              delegate: Rectangle {
+                id: fileRow
+                required property int index
+                required property string fileName
+                required property string filePath
+                readonly property bool lit: fileMa.containsMouse || graftFlow.kbIndex === fileRow.index
+                width: parent.width
+                height: fileText.implicitHeight + Style.space(14)
+                color: lit ? Qt.alpha(root.accent, 0.10) : "transparent"
+                border.width: 1
+                border.color: Qt.alpha(root.accent, lit ? 0.5 : 0.22)
+                radius: root.rad > 0 ? Style.space(6) : 0
+                Text {
+                  id: fileText
+                  anchors { left: parent.left; verticalCenter: parent.verticalCenter; margins: Style.space(10) }
+                  text: fileRow.fileName
+                  color: Qt.alpha(root.fg, 0.8)
+                  font.family: root.uiFont
+                  font.pixelSize: Style.font.bodySmall
+                  renderType: Text.QtRendering
+                }
+                MouseArea {
+                  id: fileMa
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onContainsMouseChanged: if (containsMouse) graftFlow.kbIndex = fileRow.index
+                  onClicked: graftFlow.pickFile(fileRow.index)
+                }
+              }
+            }
+
+            FileView {
+              id: graftPickFile
+              path: ""
+              blockLoading: true
+              printErrors: false
+            }
+          }
+
+          // ---- step: preview — confirm before it's spent ----------------
+          Column {
+            width: parent.width
+            spacing: Style.space(14)
+            visible: graftFlow.step === "preview" && graftFlow.pendingPreview !== null
+
+            Text {
+              width: parent.width
+              horizontalAlignment: Text.AlignHCenter
+              wrapMode: Text.Wrap
+              text: (graftFlow.pendingPreview ? graftFlow.pendingPreview.genus : "")
+                + (graftFlow.pendingPreview && graftFlow.pendingPreview.treeName
+                   ? "\nfrom " + graftFlow.pendingPreview.treeName : "")
+              color: root.accent
+              font.family: root.uiFont
+              font.pixelSize: root.capSize
+              font.letterSpacing: 1.5
+              renderType: Text.QtRendering
+            }
+
+            Row {
+              anchors.horizontalCenter: parent.horizontalCenter
+              spacing: Style.space(20)
+              Text {
+                readonly property bool lit: confirmMa.containsMouse || graftFlow.kbIndex === 0
+                text: "▸ graft it in"
+                color: Qt.alpha(root.accent, lit ? 0.95 : 0.8)
+                font.family: root.uiFont
+                font.pixelSize: root.capSize
+                font.letterSpacing: 1
+                renderType: Text.QtRendering
+                MouseArea {
+                  id: confirmMa
+                  anchors.fill: parent
+                  anchors.margins: -Style.space(8)
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onContainsMouseChanged: if (containsMouse) graftFlow.kbIndex = 0
+                  onClicked: graftFlow.confirmGraft()
+                }
+              }
+              Text {
+                readonly property bool lit: backMa.containsMouse || graftFlow.kbIndex === 1
+                text: "▸ back"
+                color: Qt.alpha(root.fg, lit ? 0.8 : 0.5)
+                font.family: root.uiFont
+                font.pixelSize: root.capSize
+                font.letterSpacing: 1
+                renderType: Text.QtRendering
+                MouseArea {
+                  id: backMa
+                  anchors.fill: parent
+                  anchors.margins: -Style.space(8)
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onContainsMouseChanged: if (containsMouse) graftFlow.kbIndex = 1
+                  onClicked: graftFlow.step = "pick"
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
