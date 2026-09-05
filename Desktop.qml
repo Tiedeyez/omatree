@@ -90,6 +90,14 @@ PanelWindow {
   // nothing unless they are actually on screen.
   mask: Region {
     Region { item: tapArea }
+    // While rotating, the whole (transparent) window catches the pointer, so
+    // the drag keeps delivering positionChanged even as the cursor leaves the
+    // small tap box — a layer surface otherwise loses the grab the moment the
+    // cursor exits the masked region and the rotate stalls mid-drag.
+    Region {
+      width: root._rotating && root._rotMoved ? root.width : 0
+      height: root._rotating && root._rotMoved ? root.height : 0
+    }
     Region { item: returnTab }
     Region {
       x: desktopQuickMenu.x; y: desktopQuickMenu.y
@@ -226,31 +234,52 @@ PanelWindow {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         cursorShape: Qt.PointingHandCursor
+        // A drag anywhere on the tree — left OR middle button — spins the
+        // turntable; a plain tap still opens the quick menu, and the wheel
+        // steps it a notch (the corner ornament has little room for a big
+        // drag, so the wheel is the reliable way round).
+        readonly property real _spinGain: 0.02
+        onWheel: function (w) {
+          if (!root.ready || !root.showTree) { w.accepted = false; return }
+          var dir = w.angleDelta.y > 0 ? 1 : -1
+          if (w.modifiers & Qt.ShiftModifier) tree.stepZoom(dir)
+          else tree.stepYaw(dir)
+          w.accepted = true
+        }
         onPressed: function (m) {
-          if (m.button === Qt.MiddleButton && root.ready && root.showTree) {
+          if (root.ready && root.showTree) {
             root._rotating = true
             root._rotLastX = m.x
-            m.accepted = true
-            return
+            root._rotMoved = false
           }
         }
         onPositionChanged: function (m) {
-          if (!root._rotating || m.buttons !== Qt.MiddleButton || !root.ready || !root.showTree) return
-          var delta = (m.x - root._rotLastX) * 0.018
+          if (!root._rotating || !root.ready || !root.showTree) return
+          var dx = m.x - root._rotLastX
+          if (!root._rotMoved) {
+            if (Math.abs(dx) < 3) return   // still a tap, not a drag
+            root._rotMoved = true
+            tree.orbitDragBegin()
+          }
+          tree.orbitDragBy(dx, tapMa._spinGain)
           root._rotLastX = m.x
-          tree.animateToYaw(tree.yaw + delta)
           m.accepted = true
         }
         onReleased: function (m) {
-          if (m.button === Qt.MiddleButton) {
-            root._rotating = false
-            root._rotLastX = 0
-            if (root.ready) root.treeService.setOrbit(tree.yaw)
-            m.accepted = true
-          }
+          if (!root._rotating) return
+          root._rotating = false
+          root._rotLastX = 0
+          if (root._rotMoved) { tree.orbitDragEnd(); m.accepted = true }
+        }
+        onCanceled: function (m) {
+          if (!root._rotating) return
+          root._rotating = false
+          root._rotLastX = 0
+          if (root._rotMoved) tree.orbitDragEnd()
         }
         onClicked: function (m) {
           if (m.button === Qt.MiddleButton) return
+          if (root._rotMoved) { root._rotMoved = false; return }  // that was a spin
           if (root.ready && root.showTree) {
             root.quickMenuOpen = !root.quickMenuOpen
             if (root.quickMenuOpen) return
@@ -269,6 +298,7 @@ PanelWindow {
   property bool quickMenuOpen: false
   property bool desktopPruning: false
   property bool _rotating: false
+  property bool _rotMoved: false
   property real _rotLastX: 0
   readonly property string companionBridgePath:
     (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
@@ -320,6 +350,39 @@ PanelWindow {
       plats.push({ x1: center - span * 1.15, x2: center - span * 0.35,
                    y: floor - 3, id: "soil-edge" })
     }
+    // The canopy: a landing spot up in the actual foliage, so a companion
+    // beamed down from the bar comes to rest IN THE LEAVES rather than at the
+    // pot. hitAreas are the foliage clump rects the pruner uses, in art-px;
+    // map their bounding box into the same screen frame as everything above so
+    // the tractor beam lines up with the tree even when it leans. Follows the
+    // turntable — spin the tree and the leaves-landing moves with it.
+    var areas = (tree && tree.hitAreas) ? tree.hitAreas : []
+    if (areas.length > 0 && isFinite(tree.artW) && tree.artW > 0
+        && isFinite(tree.artH) && tree.artH > 0) {
+      var minAx = Infinity, maxAx = -Infinity, minAy = Infinity, maxAy = -Infinity
+      for (var k = 0; k < areas.length; k++) {
+        var a = areas[k]
+        if (!a || !isFinite(a.x) || !isFinite(a.y)) continue
+        var aw = isFinite(a.w) ? a.w : 0
+        var ah = isFinite(a.h) ? a.h : 0
+        minAx = Math.min(minAx, a.x);      maxAx = Math.max(maxAx, a.x + aw)
+        minAy = Math.min(minAy, a.y);      maxAy = Math.max(maxAy, a.y + ah)
+      }
+      if (isFinite(minAx) && maxAx > minAx && maxAy > minAy) {
+        var fcx = ((minAx + maxAx) / 2) / tree.artW
+        // partway down into the leaf mass, so the pet nestles among the
+        // foliage rather than balancing on the very crown
+        var fcy = (minAy + (maxAy - minAy) * 0.46) / tree.artH
+        var canopyCx = baseX + fcx * bed.width
+        var canopyCy = baseY + fcy * bed.height
+        // Span the whole leaf mass, so the (fixed, vertical) tractor beam lands
+        // in the leaves wherever over the foliage it comes down.
+        var canopySpan = Math.max(24,
+          ((maxAx - minAx) / tree.artW) * bed.width * 0.5)
+        plats.push({ x1: canopyCx - canopySpan, x2: canopyCx + canopySpan,
+                     y: canopyCy, id: "canopy" })
+      }
+    }
     companionBridge.setText(JSON.stringify({
       version: 1,
       screen: Screen.name,
@@ -347,6 +410,19 @@ PanelWindow {
     root.ready && root.treeService.worstNeed >= 60
   onCompanionWelcomeChanged: root.publishCompanionBridge()
   onTreeInWantChanged: root.publishCompanionBridge()
+
+  // The canopy platform is derived from the tree's foliage rects, which rebuild
+  // on every turntable step and growth tick. Coalesce the republishes so a spin
+  // is not a burst of file writes.
+  Timer {
+    id: canopyRepublish
+    interval: 260
+    onTriggered: root.publishCompanionBridge()
+  }
+  Connections {
+    target: tree
+    function onHitAreasChanged() { canopyRepublish.restart() }
+  }
 
   function doDesktopAction(kind) {
     if (!root.ready || !root.showTree) return

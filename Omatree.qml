@@ -288,6 +288,34 @@ Item {
     root.animateToYaw(root.yaw + (dir < 0 ? -root.yawStep : root.yawStep))
   }
 
+  // ---- turntable drag (shared) --------------------------------------
+  // One implementation for every free-drag turntable gesture — the built-in
+  // spinMa below and the desktop ornament's left/middle-drag (Desktop.qml).
+  // yaw tracks the cursor 1:1 for the whole gesture with NO per-move easing:
+  // routing each mouse-move through animateToYaw() (a 220ms animation) is what
+  // made the desktop rotate lurch — every sample restarted the ease against a
+  // still-moving yaw, so the gain depended on frame timing.
+  readonly property real orbitDragGain: 0.013   // rad per pixel of drag
+  function orbitDragBegin() {
+    if (!root.skeleton) return
+    yawAnim.stop()
+    root.dragging = true
+  }
+  function orbitDragBy(dxPixels, gain) {
+    if (!root.dragging) return
+    root.yawTarget += dxPixels * (gain > 0 ? gain : root.orbitDragGain)
+    root.yaw = root.yawTarget
+    root.fullFrame()
+  }
+  function orbitDragEnd() {
+    if (!root.dragging) return
+    root.dragging = false
+    root.yawTarget = root.normalizeYaw(root.yawTarget)
+    root.yaw = root.yawTarget
+    root.orbitChanged(root.yaw)
+    root.fullFrame()
+  }
+
   // ---- grow-in reveal ----------------------------------------------
   property real reveal: 1
   NumberAnimation {
@@ -832,30 +860,16 @@ Item {
       onPressed: function (m) {
         // scroll-wheel click steps the turntable one notch
         if (m.button === Qt.MiddleButton) { root.stepYaw(1); return }
-        yawAnim.stop()
-        root.dragging = true; root._lastX = m.x
+        root._lastX = m.x
+        root.orbitDragBegin()
       }
       onPositionChanged: function (m) {
         if (!root.dragging) return
-        root.yawTarget += (m.x - root._lastX) * 0.013
-        root.yaw = root.yawTarget
+        root.orbitDragBy(m.x - root._lastX)
         root._lastX = m.x
-        root.fullFrame()
       }
-      onReleased: {
-        if (root.dragging) {
-          root.dragging = false
-          root.yawTarget = root.normalizeYaw(root.yawTarget)
-          root.yaw = root.yawTarget
-          root.orbitChanged(root.yaw)
-          root.fullFrame()
-        }
-      }
-      onCanceled: {
-        root.dragging = false
-        root.yawTarget = root.normalizeYaw(root.yawTarget)
-        root.yaw = root.yawTarget
-      }
+      onReleased: root.orbitDragEnd()
+      onCanceled: root.orbitDragEnd()
     }
 
     // ---- prune overlay: click a foliage cluster to trim it -------
