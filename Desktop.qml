@@ -300,12 +300,41 @@ PanelWindow {
   property bool _rotating: false
   property bool _rotMoved: false
   property real _rotLastX: 0
-  readonly property string companionBridgePath:
+  // Omagotchi's "external roam platforms" hook: any plugin can give the roaming
+  // pet somewhere extra to stand by dropping a file in this directory, one per
+  // provider. We publish the tree's own footprint here; the pet finds the
+  // ground and never learns anything about the tree. Empty / missing = nothing
+  // changes for the pet. (Older Omatree wrote a single omatree-companion.json;
+  // that file is now unused.)
+  readonly property string platformsDir:
     (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
-      + "/omarchy/omatree-companion.json"
+      + "/omarchy/omagotchi-platforms.d"
+  readonly property string companionBridgePath: root.platformsDir + "/tiedeyez.omatree.json"
+
+  Process {
+    id: platformsDirMk
+    command: ["mkdir", "-p", root.platformsDir]
+    running: true
+    onExited: root.publishCompanionBridge()
+  }
+  Process {
+    // One-time migration: older Omatree published a single
+    // omatree-companion.json; the pet no longer reads it.
+    command: ["rm", "-f",
+      (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
+        + "/omarchy/omatree-companion.json"]
+    running: true
+  }
 
   function publishCompanionBridge() {
-    if (!root.ready || !root.showTree || !isFinite(root.bedW) || !isFinite(root.bedH)) return
+    if (!root.ready || !isFinite(root.bedW) || !isFinite(root.bedH)) return
+    // Tree back in the bar → publish an empty set so a stale perch doesn't
+    // linger in the pet's world.
+    if (!root.showTree) {
+      companionBridge.setText(JSON.stringify(
+        { version: 1, screen: Screen.name, platforms: [] }, null, 2) + "\n")
+      return
+    }
     // bed.x/y are window-local, but the bridge publishes SCREEN coordinates for
     // something else to walk on. The y was already being converted; the x never
     // was, so a right-anchored tile sitting at x=3230 published its footprint at
@@ -320,11 +349,11 @@ PanelWindow {
     var center = baseX + bed.width / 2
     var span = Math.max(28, bed.width * 0.18)
     // ---- what the companion is allowed to stand on ---------------------
-    // The bar pet already reads this file and turns each entry into somewhere
-    // it can walk. So the whole easter egg lives on THIS side: we choose what
-    // to publish, the pet just goes where the ground is, and it is never told
-    // anything. No change to the pet plugin, and it keeps working untouched if
-    // this file is empty or missing.
+    // Omagotchi reads every file in omagotchi-platforms.d/ and turns each
+    // entry into somewhere the pet can walk. The whole easter egg lives on
+    // THIS side: we choose what to publish, the pet just goes where the ground
+    // is and is never told anything. It keeps working untouched if this file
+    // is empty or missing.
     //
     // The saucer is always there — anything can come and stand at the foot of a
     // tree. The BRANCHES are the unlock: a pet that is actually being kept well
@@ -334,13 +363,13 @@ PanelWindow {
     var svc = root.treeService
     var welcome = !!svc && svc.companionThriving === true
     var plats = [
-      { x1: center - span, x2: center + span, y: floor - 5, id: "saucer" }
+      { x1: center - span, x2: center + span, y: floor - 5, id: "saucer", kind: "ledge" }
     ]
     if (welcome) {
       plats.push({ x1: center - span * 0.72, x2: center + span * 0.72,
-                   y: floor - bed.height * 0.22, id: "lower-branch" })
+                   y: floor - bed.height * 0.22, id: "lower-branch", kind: "surface" })
       plats.push({ x1: center - span * 0.48, x2: center + span * 0.48,
-                   y: floor - bed.height * 0.43, id: "upper-branch" })
+                   y: floor - bed.height * 0.43, id: "upper-branch", kind: "surface" })
     }
     // And when the tree is genuinely in want of something, it puts a ledge right
     // at the soil. The pet has no idea the tree is thirsty — it simply finds new
@@ -348,7 +377,7 @@ PanelWindow {
     // exactly like it came to sit with the tree.
     if (!!svc && svc.worstNeed >= 60) {
       plats.push({ x1: center - span * 1.15, x2: center - span * 0.35,
-                   y: floor - 3, id: "soil-edge" })
+                   y: floor - 3, id: "soil-edge", kind: "ledge" })
     }
     // The canopy: a landing spot up in the actual foliage, so a companion
     // beamed down from the bar comes to rest IN THE LEAVES rather than at the
@@ -380,7 +409,7 @@ PanelWindow {
         var canopySpan = Math.max(24,
           ((maxAx - minAx) / tree.artW) * bed.width * 0.5)
         plats.push({ x1: canopyCx - canopySpan, x2: canopyCx + canopySpan,
-                     y: canopyCy, id: "canopy" })
+                     y: canopyCy, id: "canopy", kind: "perch" })
       }
     }
     companionBridge.setText(JSON.stringify({

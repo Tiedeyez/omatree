@@ -4,6 +4,18 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.3 — 2026-09-05
+
+- The companion perch moved to Omagotchi's new shared "external platform
+  providers" location (`omagotchi-platforms.d/`), so it works through a
+  documented hook any plugin can use rather than a private arrangement. Each
+  spot now carries a hint — the saucer and soil edge are `ledge`, the branches
+  `surface`, the canopy `perch`. Old single `omatree-companion.json` is removed
+  on first run. Needs a build of Omagotchi that reads the directory; without
+  one, nothing changes.
+- Publishing an empty set when the tree is back in the bar, so a stale perch
+  can't linger in the pet's world.
+
 ## 1.2.2 — 2026-09-05
 
 Turntable and companion fixes, again from a real user rotating the desktop
