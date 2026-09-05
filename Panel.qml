@@ -18,7 +18,7 @@ Panel {
   property var hostWidget: null
   property var treeService: null
   // Set by the bar widget only when the Omagotchi pet is installed. The panel
-  // grows a companion strip that tends it — feed, wash, a hand on its back —
+  // grows a companion strip that tends it — feed, wash, a moment with it —
   // by calling the pet's own service functions (the same calls its own bar
   // pill makes). Its pill still works and stays in step; this is the shared
   // window onto both. Nothing here reads the pet's files or opens its UI.
@@ -285,18 +285,23 @@ Panel {
     if (!root.petHere) return 0
     return act === "feed" ? root.petService.hunger : root.petService.dirtiness
   }
+  // Location-neutral on purpose: the companion is the Omagotchi bar pet, and
+  // it roams — it is only actually up in the branches when it is being kept
+  // well enough to climb there (see Desktop.qml's companion bridge). Saying
+  // "in my branches" while the pet is plainly down on the floor of the
+  // desktop was the tree telling a small lie.
   function petLine() {
     if (!root.petHere) return ""
     switch (root.petService.mood) {
-    case "egg": return "something small is waiting to hatch in my branches"
-    case "sleeping": return "something small is asleep in my branches"
-    case "hungry": return "the creature in my branches is hungry"
-    case "dirty": return "the creature in my branches would like washing"
-    case "sleepy": return "the creature in my branches is drowsy"
-    case "bored": return "the creature in my branches is restless"
-    case "lonely": return "the creature in my branches wants your hand"
-    case "meh": return "the creature in my branches is settled"
-    default: return "the creature in my branches is happy here"
+    case "egg": return "something small is waiting to hatch"
+    case "sleeping": return "something small is asleep"
+    case "hungry": return "the creature is hungry"
+    case "dirty": return "the creature would like washing"
+    case "sleepy": return "the creature is drowsy"
+    case "bored": return "the creature is restless"
+    case "lonely": return "the creature wants your hand"
+    case "meh": return "the creature is settled"
+    default: return "the creature is at ease"
     }
   }
   // "food" only feeds from what the tree has actually grown: a real berry,
@@ -321,7 +326,7 @@ Panel {
       root.flashNote("gave it a berry")
     }
     else if (kind === "wash") { p.scrub(25); root.flashNote("I rinsed it clean") }
-    else if (kind === "pet") { p.petThePet(); root.flashNote("it settles against the bark") }
+    else if (kind === "pet") { p.petThePet(); root.flashNote("it leans into your hand") }
     else if (kind === "wake") { p.wakeUp(); root.flashNote("it stirs awake") }
   }
   Timer {
@@ -1065,7 +1070,7 @@ Panel {
 
         // ---- the companion ---------------------------------------
         // Only when the Omagotchi bar pet is installed: its creature has come
-        // to live in the tree. Tend it here — feed, wash, a hand on its back —
+        // to live in the tree. Tend it here — feed, wash, a moment with it —
         // without leaving the panel. Fully in the panel's keyboard cursor
         // (petfeed / petwash / pethand), and its own pill still works too.
         Column {
@@ -1187,7 +1192,7 @@ Panel {
             }
           }
 
-          // a hand on its back — or a nudge awake — always offered
+          // a moment with it — or a nudge awake — always offered
           Item {
             anchors.horizontalCenter: parent.horizontalCenter
             width: handText.implicitWidth + Style.space(16)
@@ -1199,7 +1204,7 @@ Panel {
               id: handText
               anchors.centerIn: parent
               text: (root.petHere && root.petService.sleeping)
-                ? "▸ wake it" : "▸ a hand on its back"
+                ? "▸ wake it" : "▸ a moment with it"
               color: Qt.alpha(root.accent, parent.lit ? 0.95 : 0.7)
               font.family: root.uiFont
               font.pixelSize: root.capSize
@@ -1289,14 +1294,15 @@ Panel {
             }
           }
 
-          // The long explainer belonged to the settings page. Out here the
-          // toggle is read at a glance, so it only says where the tree is.
+          // The subtitle only ever says WHERE the tree currently is, so it
+          // stays parallel with the "on" state instead of repeating the
+          // toggle's own "SET ME OUT" label straight back at you.
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
             text: desktopToggle.on ? "out in your lower-right corner"
-                                   : "or set me out on your desktop"
+                                   : "kept here in the bar"
             color: Qt.alpha(root.fg, 0.45)
             font.family: root.uiFont
             font.pixelSize: root.capSize
