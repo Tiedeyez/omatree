@@ -40,8 +40,12 @@ PanelWindow {
   // they are NOT the footprint. Sizing the stage to a fraction of the screen is
   // what put a ~990x700 input-blocking rectangle on a 3440x1440 desktop, most of
   // it empty, swallowing clicks and drags meant for the window behind it.
-  readonly property real maxDesktopH: Math.max(150, Screen.height * 0.30)
-  readonly property real maxDesktopW: Math.max(120, Screen.width * 0.14)
+  // Doubled 2026-09-04 (Jimmie: "enlarge 100%") alongside artUnits below --
+  // the caps have to grow with it or desktopScale would just claw the extra
+  // art pixels back down via a fractional downscale, which is the exact mush
+  // the 1:1 comment above is warning against.
+  readonly property real maxDesktopH: Math.max(300, Screen.height * 0.60)
+  readonly property real maxDesktopW: Math.max(240, Screen.width * 0.28)
   // 1:1. artScale already gives a clean 2x, so the ornament is drawn at exactly
   // the size it was rendered and the pixel grid stays exact. Making the tree
   // smaller is done by rendering FEWER art pixels (the Tree's artUnits below),
@@ -168,7 +172,10 @@ PanelWindow {
       // Sized against the reference shot: 2.2 art-units renders ~97x123 art px,
       // which at artScale 2 lands the ornament at ~194x246 on screen. The panel
       // keeps its own larger art resolution; only the desktop tile shrinks.
-      artUnits: 2.2
+      // Doubled to 4.4 (Jimmie: "enlarge 100%") -- ~194x246 art px, ~388x492 on
+      // screen. maxDesktopW/H above were raised to match so this still renders
+      // at a clean 1:1, never a fractional downscale.
+      artUnits: 4.4
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       scale: root.desktopScale
