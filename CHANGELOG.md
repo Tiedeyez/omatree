@@ -4,6 +4,27 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.2 — 2026-09-05
+
+Turntable and companion fixes, again from a real user rotating the desktop
+tree:
+
+- **Rotating the desktop ornament actually works now.** It was routing every
+  fidget of the mouse through a short animation, so the tree lurched — a
+  full-screen drag might barely turn it, a tiny nudge might spin it half a
+  turn. Now the angle tracks the cursor one-to-one, the same as the panel.
+- **The mouse wheel spins the desktop tree** a notch at a time — the corner
+  is a cramped place for a big drag, so the wheel is the dependable way
+  round. Hold Shift and the wheel still does the shallow zoom.
+- **A left-drag on the desktop tree spins it too**, not just middle-drag; a
+  plain tap still opens the quick menu.
+- Mid-drag, the tree no longer loses the rotation when the cursor slides off
+  it.
+- Groundwork for the Omagotchi companion: the tree now offers a
+  perch up in its canopy, so a companion that comes down from the bar can
+  settle in the leaves rather than at the pot. Purely a spot published for
+  the pet to find — the tree still sends and receives nothing.
+
 ## 1.2.1 — 2026-09-05
 
 Small fixes from a real early user's screenshots, where the tree had the
