@@ -37,9 +37,12 @@ reinstall.
   beside it after dark.
 - **Left-click** opens the panel: the tree, its mood, its life stage, and four
   slim care meters — water, light, feed, form — each with a pill to tend it.
-- **Middle-click** the bar mark waters the tree without opening anything.
-- **Plant** from seed or from a cutting the first time. A matured tree can set
-  a single berry; its seed carries to the next pot on the same machine.
+- **Middle-click** the bar mark waters the tree without opening anything;
+  **right-click** toggles it out onto the desktop or back to the bar.
+- **Plant** from seed or from a cutting the first time. A matured, well-kept
+  tree can set a single heirloom fruit once; harvest it for a seed that
+  carries its lineage to the next pot on the same machine. (This is separate
+  from berries, below — the rare one-time heirloom, not the recurring food.)
 - **Prune by hand.** In the panel's trim mode, pick a cluster and cut. Cuts are
   permanent and the tree grows on from them — this is how you give it its form.
 - **Rotate** the tree by dragging it, middle-clicking to step 30°, or focusing
@@ -49,13 +52,37 @@ reinstall.
   `TAKE ME HOME` to bring it back to the bar.
 
 Full keyboard navigation is available throughout the panel (`↑↓`/`jk` to move,
-`Enter`/`Space` to act, `w`/`f`/`p` shortcuts).
+`Enter`/`Space` to act, `w`/`f`/`p` shortcuts), grafting included.
 
 ### Care pacing
 
 Growth is deliberately slow — roughly a couple of months of daily use from
 sprout to a mature tree. Water is asked for by the end of a day's use; light
 over days; feed over weeks; form only seasonally, and it never nags.
+
+## Grafting
+
+A tree can accept up to 3 grafts from a small `.omatree-graft.json` file —
+give a cutting of your own tree to a friend any way you like (chat,
+AirDrop, USB, whatever), and they graft it into theirs. The plugin never
+sends or receives anything itself; the file is the whole exchange.
+
+Open it from the panel's GRAFTS row, under trim:
+
+- **Give a cutting** — free, unlimited. Writes a file to
+  `~/.local/state/omarchy/omatree-grafts/outbox` and shows you the path.
+  The file carries only your tree's genus and shape — never your machine
+  identity, name, or anything else about you.
+- **Graft one in** — drop a file someone gave you into
+  `~/.local/state/omarchy/omatree-grafts/inbox`; the panel lists what's
+  there, previews it, and asks before it's spent. Capped at 3 per tree.
+
+A graft can bring in a genus no solo tree ever rolls on its own — willow,
+crimson maple, gold zelkova, flowering plum — each reachable only this way.
+Two break the usual theme-tinted green outright; plum grows real blossoms;
+willow grows real cascading strands rather than just drooping. Grafting an
+already-hybridized tree passes its whole real lineage along, so the pool of
+possible grafts grows with who's using it, not with a fixed list.
 
 ## If you also run Omagotchi
 

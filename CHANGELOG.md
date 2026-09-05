@@ -4,6 +4,36 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.0 — 2026-09-04
+
+- **Grafting.** A tree can now accept up to 3 grafts from a small
+  `.omatree-graft.json` file someone else gave you — any way you like
+  (chat, AirDrop, USB); the plugin itself never sends or receives anything
+  over a network. Open it from the panel's GRAFTS row, under trim: give a
+  cutting (free, unlimited — writes a file to
+  `~/.local/state/omarchy/omatree-grafts/outbox`) or graft one in (reads
+  `~/.local/state/omarchy/omatree-grafts/inbox`, previews before
+  confirming). Fully keyboard-navigable.
+- **Four graft-only genera** — willow, crimson maple, gold zelkova,
+  flowering plum — reachable only through grafting, never a solo tree's own
+  roll. Two break the usual theme-tinted green (crimson maple, gold
+  zelkova); plum scatters real blossoms on the canopy; willow grows real
+  cascading strands, not just a droopy round tree.
+- A graft file carries a recipe (a base genus + a non-identifying alias
+  seed, never your tree's real identity), not the resulting numbers — every
+  value is recomputed from the seed on import, the same way the tree itself
+  has always worked. Stress-tested at 200k seeds per genus and against
+  adversarial input (corrupted files, huge numbers, deeply nested chains);
+  full write-up of what a graft file can and can't prove is in `TreeGen.js`.
+- Bar: right-click now toggles "set on desktop" directly.
+- Desktop tile: its quick-menu gains FEED (when the Omagotchi companion is
+  present) and GRAFT (opens the panel's walkthrough).
+- Two small bug fixes that shipped invisibly until this release exercised
+  them: the render cache never noticed a genus change (a graft would have
+  silently kept its old shape), and the once-in-a-lifetime heirloom fruit
+  was being painted underneath the canopy that covers it, every time — it
+  may never have actually been visible on a real tree before now.
+
 ## 1.1.0 — 2026-09-04
 
 - **Berries.** A well-kept tree now grows up to 2 berries — small, on the
