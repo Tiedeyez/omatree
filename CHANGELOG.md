@@ -4,6 +4,25 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.1 — 2026-09-05
+
+Small fixes from a real early user's screenshots, where the tree had the
+Omagotchi companion but the pet was roaming on the desktop floor, not
+perched in the branches:
+
+- The companion strip stopped claiming the pet was "in my branches" for
+  every mood — it now just says what the creature is (hungry, settled, …),
+  since the pet roams and is only actually up in the tree when it's kept
+  well enough to climb there.
+- "a hand on its back" → "a moment with it", same reason.
+- The "SET ME OUT" toggle's subtitle no longer repeats the toggle's own
+  label back at you when it's off — it only ever states where the tree
+  currently is.
+- The desktop ornament briefly grew a screen-tall border box: a stale key
+  in a separate window-border overlay that stopped matching after the
+  plugin's rename. Fixed in that overlay.
+- The desktop ornament is now drawn twice as large.
+
 ## 1.2.0 — 2026-09-04
 
 - **Grafting.** A tree can now accept up to 3 grafts from a small
