@@ -629,6 +629,24 @@ function build(sk, V) {
   if (berryIdx[1] === fruitIdx || berryIdx[1] === berryIdx[0])
     berryIdx[1] = (berryIdx[1] + 2) % clumpN
 
+  // A blossom genus (TreeGen.js GENUS.plum, currently — graft-only) scatters
+  // a handful of blossom blobs across the canopy, same slot-picking idea as
+  // fruit/berries but spread over more clumps since a flowering tree reads
+  // as numerous small blooms, not one or two big ones.
+  var takenIdx = {}
+  takenIdx[fruitIdx] = 1
+  for (var _bi = 0; _bi < berryIdx.length; _bi++) takenIdx[berryIdx[_bi]] = 1
+  function pickFreeIdx(offset) {
+    var idx = ((sk.seed >>> 0) + offset) % clumpN
+    var guard = 0
+    while (takenIdx[idx] && guard < clumpN) { idx = (idx + 1) % clumpN; guard++ }
+    takenIdx[idx] = 1
+    return idx
+  }
+  var blossomCount = sk.blossom ? Math.min(5, clumpN) : 0
+  var blossomIdx = []
+  for (var _fi = 0; _fi < blossomCount; _fi++) blossomIdx.push(pickFreeIdx(401 + _fi * 97))
+
   var clumpDraw = []
   for (var c = 0; c < sk.clumps.length; c++) {
     var cl = sk.clumps[c]
@@ -637,31 +655,65 @@ function build(sk, V) {
       ? Math.sin(V.time * WOBBLE_RATE + cl.phase) * WOBBLE_AMP
       : 0
     var rpx = cl.r * V.art * P.s
-    var blossom = false
     var fillCol = cl.seedling && cl.c[1] < 0 ? pal.trunk : pal.frond
+    // A weeping clump reads as a small tuft, not a round mass — the hanging
+    // strands below (see the weeping block further down) carry the actual
+    // silhouette, the same way a needle clump is squashed for pine/juniper.
     var op2 = {
       op: "blob",
       cx: P.x + wob, cy: P.y + wob * 0.4,
-      rx: rpx * 1.15, ry: rpx * (sk.needle ? 0.78 : 0.92),
+      rx: rpx * (sk.weeping ? 0.85 : 1.15), ry: rpx * (sk.needle ? 0.78 : sk.weeping ? 0.62 : 0.92),
       wobf: [noise(c, 1, salt) - 0.5, noise(c, 2, salt) - 0.5, noise(c, 3, salt) - 0.5],
       base: fillCol, night: night, gold: gold, ambient: ambient,
       lx: lx, ly: ly, intensity: night ? 0.5 : sun.intensity,
       salt: salt + c * 97, seedling: !!cl.seedling,
       z: P.z
     }
+    // Weeping (willow, and any hybrid carrying it): real weeping willow
+    // bonsai read as long thin cascading strands trailing from each branch
+    // tip, not round clumps at all — a plain high droop value alone (just
+    // tilting the whole clump down) still looked like an ordinary tree.
+    // These are separate elongated blobs stepping straight down from the
+    // clump's own position, shrinking as they fall, with a small per-strand
+    // horizontal drift so the curtain doesn't read as a rigid stack.
+    if (sk.weeping && !cl.seedling) {
+      var strandN = 3
+      for (var wi = 1; wi <= strandN; wi++) {
+        var shrink = 1 - wi * 0.22
+        var strandR = Math.max(1.3, rpx * 0.40 * shrink)
+        var driftX = (noise(c, 10 + wi, salt) - 0.5) * rpx * 0.5
+        var sx = P.x + wob + driftX
+        var sy = P.y + wob * 0.4 + rpx * 0.85 * wi
+        clumpDraw.push({ z: P.z + 0.001 * wi, op: {
+          op: "blob", cx: sx, cy: sy,
+          rx: strandR * 0.6, ry: strandR * 1.6,
+          wobf: [noise(c, 20 + wi, salt) - 0.5, noise(c, 21 + wi, salt) - 0.5, noise(c, 22 + wi, salt) - 0.5],
+          base: fillCol, night: night, gold: gold, ambient: ambient,
+          lx: lx, ly: ly, intensity: night ? 0.5 : sun.intensity,
+          salt: salt + c * 97 + wi * 13, seedling: false,
+          z: P.z + 0.001 * wi
+        } })
+      }
+    }
+    // Fruit and berries go through clumpDraw's own z-sort (below), same as
+    // every foliage blob — pushing them straight to leafOps here would paint
+    // them BEFORE all of clumpDraw's sorted blobs land at the end of this
+    // function, so every leaf clump would draw over them unconditionally.
     if (sk.fruit && c === ((sk.seed >>> 0) % Math.max(1, sk.clumps.length))) {
-      leafOps.push({
+      var fruitZ = P.z + 0.2
+      clumpDraw.push({ z: fruitZ, op: {
         op: "blob", mat: "fruit", cx: P.x + rpx * 0.58, cy: P.y + rpx * 0.32,
         rx: Math.max(2.5, rpx * 0.22), ry: Math.max(2.5, rpx * 0.22),
         wobf: [0.02, -0.03, 0.01], base: pal.fruit,
         night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
         intensity: night ? 0.55 : sun.intensity, salt: salt + 201,
-        seedling: false, z: P.z + 0.2
-      })
+        seedling: false, z: fruitZ
+      } })
     }
     for (var bi = 0; bi < berryCount; bi++) {
       if (c !== berryIdx[bi]) continue
-      leafOps.push({
+      var berryZ = P.z + 0.2
+      clumpDraw.push({ z: berryZ, op: {
         op: "blob", mat: "berry",
         cx: P.x + rpx * (bi === 0 ? -0.55 : 0.15),
         cy: P.y + rpx * (bi === 0 ? 0.30 : -0.45),
@@ -669,8 +721,22 @@ function build(sk, V) {
         wobf: [-0.02, 0.03, -0.01], base: pal.berry,
         night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
         intensity: night ? 0.55 : sun.intensity, salt: salt + 311 + bi * 7,
-        seedling: false, z: P.z + 0.2
-      })
+        seedling: false, z: berryZ
+      } })
+    }
+    for (var fl = 0; fl < blossomCount; fl++) {
+      if (c !== blossomIdx[fl]) continue
+      var blossomZ = P.z + 0.2
+      var bAng = fl * (Math.PI * 2 / 5) + (sk.seed % 100) * 0.01
+      clumpDraw.push({ z: blossomZ, op: {
+        op: "blob", mat: "blossom",
+        cx: P.x + Math.cos(bAng) * rpx * 0.6, cy: P.y + Math.sin(bAng) * rpx * 0.5,
+        rx: Math.max(1.6, rpx * 0.13), ry: Math.max(1.6, rpx * 0.13),
+        wobf: [0.03, -0.02, 0.02], base: pal.blossom,
+        night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
+        intensity: night ? 0.55 : sun.intensity, salt: salt + 401 + fl * 13,
+        seedling: false, z: blossomZ
+      } })
     }
     clumpDraw.push({ z: P.z, op: op2 })
     if (!cl.seedling && rpx > 3)
@@ -978,7 +1044,7 @@ function blobPixel(op, x, y) {
     lum *= 0.78
   } else if (op.mat === "water") {
     lum = 0.76 + 0.20 * clamp(ndotl, 0, 1)
-  } else if (op.mat === "fruit" || op.mat === "berry") {
+  } else if (op.mat === "fruit" || op.mat === "berry" || op.mat === "blossom") {
     lum = 0.82 + 0.28 * clamp(ndotl, 0, 1)
   }
 
@@ -988,14 +1054,14 @@ function blobPixel(op, x, y) {
     else if (dap > 0.74) lum += 0.10
   } else if (op.mat === "water") {
     if (dap > 0.72) lum += 0.12
-  } else if ((op.mat === "fruit" || op.mat === "berry") && dap > 0.62) {
+  } else if ((op.mat === "fruit" || op.mat === "berry" || op.mat === "blossom") && dap > 0.62) {
     lum += 0.10
   } else if (dap < 0.22) lum -= 0.22             // inner leaf-gap shadow
   else if (dap > 0.74) lum += 0.16              // sun fleck
 
   var rim = rr > edge - 0.34
   if (rim) lum -= op.mat === "moss" ? 0.12
-    : (op.mat === "water" || op.mat === "fruit" || op.mat === "berry" ? 0.05 : OUTLINE)
+    : (op.mat === "water" || op.mat === "fruit" || op.mat === "berry" || op.mat === "blossom" ? 0.05 : OUTLINE)
   if (op.night && rim && ndotl > 0.1) lum += 0.5    // moonlit edge
 
   var col = shade(base, lum, op.night, op.gold)

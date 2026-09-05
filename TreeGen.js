@@ -91,9 +91,22 @@ function nameFor(seed) {
 var GENUS = {
   juniper: { depth: 7, spread: 0.60, droop: 0.5, taper: 0.62, boughs: 3, leaf: "scale" },
   maple:   { depth: 6, spread: 0.82, droop: 0.20, taper: 0.66, boughs: 4, leaf: "fan" },
-  pine:    { depth: 8, spread: 0.46, droop: 0.72, taper: 0.55, boughs: 3, leaf: "needle" }
+  pine:    { depth: 8, spread: 0.46, droop: 0.72, taper: 0.55, boughs: 3, leaf: "needle" },
+
+  // Exotic — reachable only through grafting (see exoticGenesis()/fuse()
+  // below), never rolled for a solo tree. GENUS_NAMES stays exactly the 3
+  // above; a real install's genesis() never sees these.
+  //   hue      — a fixed leaf hue (0..1) that breaks the usual theme-tinted
+  //              green anchor. Undefined = tinted green like the base 3.
+  //   blossom  — scatters a handful of small blossom blobs across the
+  //              canopy (Paint.js), same technique as the fruit/berry blobs.
+  willow:          { depth: 5, spread: 1.05, droop: 0.92, taper: 0.74, boughs: 3, leaf: "weeping" },
+  "crimson-maple": { depth: 6, spread: 0.82, droop: 0.20, taper: 0.66, boughs: 4, leaf: "fan", hue: 0.02 },
+  zelkova:         { depth: 7, spread: 0.55, droop: 0.15, taper: 0.60, boughs: 5, leaf: "fine", hue: 0.13 },
+  plum:            { depth: 6, spread: 0.70, droop: 0.30, taper: 0.64, boughs: 4, leaf: "fan", blossom: true }
 }
 var GENUS_NAMES = ["juniper", "maple", "pine"]
+var EXOTIC_GENUS_NAMES = ["willow", "crimson-maple", "zelkova", "plum"]
 
 // Training styles. Each biases the trunk line and where foliage sits.
 // STYLES is the full set Grow.js understands (and dev/timelapse --style can pick);
@@ -143,6 +156,230 @@ function genesis(machineId, user) {
     leafHue: 90 + rnd() * 80,
     leafSat: 0.45 + rnd() * 0.3
   }
+}
+
+// Same identity math as genesis() above, but for a graft-only genus: forces
+// the genus instead of rolling from GENUS_NAMES, and — since this is a new
+// path with no installed tree depending on its exact numbers — fixes the one
+// real gap genesis() has: `breadth` (the angular spread of child branches)
+// never actually read the genus's own `spread` value. genesis() itself is
+// left completely untouched; every already-planted tree renders exactly as
+// it always has.
+function exoticGenesis(genusName, machineId, user) {
+  var seed = fnv1a(String(machineId || "") + "|" + String(user || "") + "|graft:" + genusName)
+  return exoticGenesisFromSeed(seed, genusName) || genesis(machineId, user)   // unknown name -> ordinary tree, never throw
+}
+
+// A real tree's own base is one of the 3 solo genera from a real genesis()
+// call — tied to real machine identity, and never meant to leave the
+// machine. To let a real tree be exported as a graft donor at all, it needs
+// a PUBLIC STAND-IN for that base: a one-way hash distinct from every other
+// seed this plugin computes (its own "graft-alias:" salt, separate from
+// exoticGenesis()'s "graft:" salt), reconstructible only by replaying
+// exoticGenesisFromSeed(aliasSeed, genus) — never the real seed itself, and
+// not practically invertible back to machineId/user.
+function graftAliasSeed(machineId, user, genus) {
+  return fnv1a(String(machineId || "") + "|" + String(user || "") + "|graft-alias:" + String(genus || ""))
+}
+
+// The seed-only half of exoticGenesis() above — everything about an exotic
+// tree is a pure function of (seed, genusName), nothing else, which is what
+// makes graft files possible: a graft file ships this pair, never a
+// machineId/user, and every field below is regenerated identically by
+// whoever imports it. See exportGraft()/importGraft() further down.
+function exoticGenesisFromSeed(seed, genusName) {
+  seed = seed >>> 0
+  var g = GENUS[genusName]
+  if (!g) return null                        // unknown genus -> caller's problem, never throw
+
+  var rnd = mulberry32(seed)
+  rnd(); rnd(); rnd()
+
+  var style = STYLE_POOL[Math.floor(rnd() * STYLE_POOL.length)]
+  var facing = rnd() * 6.2831853
+  // 0.7 is roughly the mean `spread` across the 3 live genera (0.60/0.82/0.46),
+  // so an exotic with an average spread value still lands in genesis()'s
+  // original 0.55-1.05 breadth band; only genuinely wide (willow, 1.05) or
+  // narrow (zelkova, 0.55) genera visibly push past it.
+  var spreadMid = 0.7
+
+  return {
+    seed: seed, genus: genusName, model: g, style: style, facing: facing,
+    lean: (style === "slant" ? 0.5 : style === "windswept" ? 0.7
+          : style === "literati" ? 0.32 : 0.08) + rnd() * 0.18,
+    twist: 0.3 + rnd() * 0.7,
+    gnarlAmp: (style === "formal" ? 0.35 : 1) * (0.5 + rnd() * 0.9),
+    gnarlFreq: 1.2 + rnd() * 2.4,
+    breadth: (0.55 + rnd() * 0.5) * (g.spread / spreadMid),
+    droop: g.droop * (0.7 + rnd() * 0.6),
+    vigor: 0.45 + rnd() * 0.5,
+    phyllotaxis: 2.2 + rnd() * 0.6,
+    taper: g.taper * (0.94 + rnd() * 0.12),
+    foliage: 0.7 + rnd() * 0.6,
+    leafHue: 90 + rnd() * 80,
+    leafSat: 0.45 + rnd() * 0.3,
+    hue: g.hue,                                // undefined unless the genus breaks the green anchor
+    blossom: !!g.blossom
+  }
+}
+
+// Blend a recipient tree with a donor's — the actual "graft". Seed, style,
+// facing and lean stay the recipient's own (a graft changes what a tree IS
+// made of, not which way it already leans), everything genus/branch-shaped
+// interpolates at weight t (0 = all recipient, 1 = all donor).
+//
+// t defaults to 0.65, not 0.5: an even split regresses toward the mean of
+// whatever's being combined, so a chain of grafts gets BLANDER with every
+// step rather than rarer — measured (dev/shot-exotic.js --fuse willow,plum
+// starting from an ordinary maple) a 3-trait 50/50 chain diluted willow's
+// droop from 0.20 -> 0.56 -> 0.43, ending up unremarkable, exactly backwards
+// from what grafting is supposed to feel like.
+//
+// hue is handled differently from the numeric fields on purpose: lerping it
+// against a plain tree's *implicit* green (there is no real hue to blend
+// against — `undefined` was standing in for one) is what produced a muddy
+// olive instead of a real color. A break in the green anchor is now STICKY —
+// it survives being crossed with an ordinary tree at full strength, the way
+// a real trait doesn't get "half-inherited" from a parent that never had it.
+// Two ACTUAL exotic hues (both sides genuinely break the anchor) still blend
+// for real, since that is a real two-way mix, not one side diluting a
+// default that was never there.
+function fuse(recipient, donor, t) {
+  t = (t === 0 || t > 0) ? t : 0.65
+  function lerp(a, b) { return a + (b - a) * t }
+  var genus = recipient.genus === donor.genus ? recipient.genus : recipient.genus + "+" + donor.genus
+  var rHue = recipient.model.hue, dHue = donor.model.hue
+  var hue = (rHue !== undefined && dHue !== undefined) ? lerp(rHue, dHue)
+    : (dHue !== undefined ? dHue : rHue)   // undefined when neither side ever broke the anchor
+  var blossom = !!(recipient.model.blossom || donor.model.blossom)
+  var model = {
+    taper: lerp(recipient.model.taper, donor.model.taper),
+    boughs: Math.max(2, Math.round(lerp(recipient.model.boughs, donor.model.boughs))),
+    spread: lerp(recipient.model.spread, donor.model.spread),
+    droop: lerp(recipient.model.droop, donor.model.droop),
+    depth: Math.round(lerp(recipient.model.depth, donor.model.depth)),
+    hue: hue, blossom: blossom
+  }
+  var out = {}
+  for (var k in recipient) out[k] = recipient[k]
+  out.genus = genus
+  out.model = model
+  out.taper = lerp(recipient.taper, donor.taper)
+  out.droop = lerp(recipient.droop, donor.droop)
+  out.breadth = lerp(recipient.breadth, donor.breadth)
+  out.vigor = lerp(recipient.vigor, donor.vigor)
+  out.phyllotaxis = lerp(recipient.phyllotaxis, donor.phyllotaxis)
+  out.foliage = lerp(recipient.foliage, donor.foliage)
+  out.gnarlAmp = lerp(recipient.gnarlAmp, donor.gnarlAmp)
+  out.twist = lerp(recipient.twist, donor.twist)
+  out.hue = hue
+  out.blossom = blossom
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Graft files — the actual exchange, P2P, no network in the plugin at all.
+// A file ships a RECIPE, not a result: a base genus + seed, and a flat list
+// of exotic grafts on top of it — never the dozen derived trait numbers.
+// importGraft() never trusts a stored trait value; it recomputes every one
+// fresh via exoticGenesisFromSeed()/fuse(). That single choice is why there
+// is no clamp table anywhere here: the generator's own formulas
+// (droop: g.droop * (0.7 + rnd()*0.6), etc.) already bound every field to
+// what SOME seed could plausibly produce, for every possible seed — it is
+// the one source of truth for valid ranges, forever in sync with itself,
+// rather than a second hand-maintained bounds table that could drift from
+// it. A forged/hand-edited seed still only ever yields an ordinary member
+// of the named genus, never an out-of-range one.
+//
+// The base is the piece that makes a REAL tree exportable at all — a real
+// tree's own genus (juniper/maple/pine) never appears in EXOTIC_GENUS_NAMES,
+// and once grafted its genus is a "+"-joined label, not a single exotic
+// name either. Neither could ever be exported under a scheme that only
+// recognized fresh exotic donors. graftAliasSeed() (above) gives every real
+// tree a public, non-identifying stand-in for its base so IT can be the
+// base of an exported recipe too — a graft file's `base` is just another
+// {genus, genusSeed} pair, reconstructed the exact same way a fresh
+// exotic's is.
+//
+// A `grafts` entry can itself be a full nested {base, grafts} object, not
+// just a flat exotic leaf — that's what lets an already-grafted tree be
+// re-shared with its whole real lineage intact, satisfying an unbounded,
+// community-grown donor pool rather than a fixed catalog. Depth and total
+// node count are both hard-capped (GRAFT_MAX_DEPTH / GRAFT_MAX_NODES)
+// regardless of what a file claims, so a maliciously deep or wide chain
+// costs a bounded amount of computation to reject, never an unbounded one.
+//
+// What this proves, and what it doesn't: NOTHING here can prove a seed was
+// actually earned through real play rather than picked freely — every
+// recipient runs the identical open-source math a forger would, and there
+// is no server or key in this design to change that. What it DOES
+// guarantee is narrower and still real: whatever a file claims, the result
+// is bounded to a plausible instance of the named genus at every step,
+// nothing more exotic than that. A signed/authenticated version is
+// deliberately not attempted, since it would need infrastructure this
+// plugin refuses to have (a server, an account, a network call).
+var GRAFT_SCHEMA = 2
+var GRAFT_MAX_DEPTH = 4     // how many "generations" of nested re-sharing a chain may reference
+var GRAFT_MAX_NODES = 40    // total donor reconstructions across one whole chain, however it's shaped
+
+// baseGenus/baseAliasSeed identify the exporter's own base tree (real
+// genesis(), via graftAliasSeed() — never the real seed); graftLineage is
+// that tree's OWN accumulated graft steps, in the exact shape Service.qml
+// stores them (each either a flat exotic leaf or another full recipe).
+function exportGraft(baseGenus, baseAliasSeed, graftLineage, treeName) {
+  if (typeof baseGenus !== "string" || !GENUS[baseGenus]) return null
+  return {
+    schemaVersion: GRAFT_SCHEMA,
+    treeName: typeof treeName === "string" ? treeName.slice(0, 40) : "",
+    base: { genus: baseGenus, genusSeed: (Number(baseAliasSeed) || 0) >>> 0 },
+    grafts: Array.isArray(graftLineage) ? graftLineage.slice(0, 8) : []
+  }
+}
+
+function _graftNode(data, depth, budget) {
+  if (depth > GRAFT_MAX_DEPTH || budget.n <= 0) return null
+  if (!data || typeof data !== "object") return null
+  if (data.schemaVersion !== GRAFT_SCHEMA) return null
+  if (!data.base || typeof data.base !== "object") return null
+  if (typeof data.base.genus !== "string" || !GENUS[data.base.genus]) return null
+
+  budget.n--
+  var baseSeed = Number(data.base.genusSeed)
+  if (!isFinite(baseSeed)) baseSeed = 0
+  var g = exoticGenesisFromSeed(baseSeed >>> 0, data.base.genus)
+  if (!g) return null
+
+  var steps = Array.isArray(data.grafts) ? data.grafts.slice(0, 8) : []
+  for (var i = 0; i < steps.length; i++) {
+    var step = steps[i]
+    if (!step || typeof step !== "object") continue
+    var donor = null
+    if (step.base) {
+      donor = _graftNode(step, depth + 1, budget)          // a re-shared, already-grafted tree
+    } else if (typeof step.genus === "string" && EXOTIC_GENUS_NAMES.indexOf(step.genus) >= 0) {
+      if (budget.n <= 0) return g
+      budget.n--
+      var seed = Number(step.genusSeed)
+      if (!isFinite(seed)) seed = 0
+      donor = exoticGenesisFromSeed(seed >>> 0, step.genus)  // a fresh exotic leaf
+    }
+    if (donor) g = fuse(g, donor, undefined)
+  }
+  return g
+}
+
+// Returns null on anything malformed rather than throwing — a bad graft
+// file fails closed, same instinct as Service.qml's own save-file loader.
+// Every seed is coerced with `>>> 0`, which turns literally any input (a
+// string, a float, a huge number, NaN) into some valid 32-bit seed rather
+// than throwing — an invalid seed can't exist, only an unpredictable one,
+// and exoticGenesisFromSeed() bounds whatever it produces regardless.
+function importGraft(data) {
+  var g = _graftNode(data, 0, { n: GRAFT_MAX_NODES })
+  if (!g) return null
+  g.treeName = typeof data.treeName === "string"
+    ? data.treeName.replace(/[^\x20-\x7e]/g, "").slice(0, 40) : ""
+  return g
 }
 
 // grow(gen, maturity, tangled): produce the branch + foliage geometry.

@@ -31,6 +31,8 @@ const PITCH = num('pitch', CASE ? 0.34 : DESK ? 0.12 : 0.26)
 const HOUR = clamp(num('hour', 13), 0, 24)
 const THIRST = clamp(num('thirst', 0), 0, 1)
 const HEALTH = clamp(num('health', 1), 0, 1)
+const BERRIES = Math.max(0, Math.min(2, num('berries', 0) | 0))
+const FRUIT = flag('fruit')
 const PRUNE = num('prune', 0) | 0
 const LAMP = flag('lamp')
 const LIGHT = flag('light')
@@ -66,7 +68,9 @@ const PAL = {
   // mirrors Omatree.qml potC: earthen terracotta, only faintly tinted by accent
   pot: { r: 0.71 + 0.10 * ARGB.r, g: 0.46 + 0.10 * ARGB.g, b: 0.33 + 0.10 * ARGB.b },
   soil: hsv(grey ? .07 : mixHue(.075, ah, .14), grey ? .10 : .24, LIGHT ? .40 : .34),
-  fruit: hsv(grey ? .32 : mixHue(.30, ah, .34), .55, LIGHT ? .72 : .9)
+  fruit: hsv(grey ? .32 : mixHue(.30, ah, .34), .55, LIGHT ? .72 : .9),
+  // fixed indigo, not accent-mixed — mirrors Omatree.qml's palette.berry
+  berry: hsv(0.70, .55, LIGHT ? .62 : .80)
 }
 // --bg lets the caller render onto a colour the tree's own palette can never
 // produce, so a downstream chroma-key is exact. Keying by flood-fill from the
@@ -100,7 +104,7 @@ function renderOne (gen, mat, age, yaw, hour, time) {
   if (GENUS) gen.genus = GENUS
   if (STYLE) gen.style = STYLE
   const prune = pruneMapFor(gen, mat, age, yaw, hour)
-  const sk = P.Grow.grow(gen, { maturity: mat, ageYears: age, thirst: THIRST, health: HEALTH, prune: prune, origin: 'cutting' })
+  const sk = P.Grow.grow(gen, { maturity: mat, ageYears: age, thirst: THIRST, health: HEALTH, prune: prune, origin: 'cutting', fruit: FRUIT, berries: BERRIES })
   const mz = P.Paint.measureStable(sk, { art: ART, showCase: CASE, yaw, pitch: PITCH })
   const V = { yaw, pitch: PITCH, art: ART, w: mz.w, h: mz.h, originX: mz.originX, originY: mz.originY, sun: P.Paint.sunForTime(Math.floor(hour), Math.round((hour % 1) * 60)), lamp: LAMP, palette: PAL, time, showCase: CASE }
   const dl = P.Paint.build(sk, V)

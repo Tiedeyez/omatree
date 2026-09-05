@@ -116,6 +116,11 @@ function grow(gen, state) {
   var health = (state.health === 0 || state.health > 0) ? clamp(state.health, 0, 1) : 1
   var fruit = state.fruit === true
   var berries = Math.max(0, Math.min(2, Math.round(state.berries || 0)))
+  // Exotic, graft-only genera (TreeGen.js's GENUS table) carry these on the
+  // gen object itself, not on state — a blossom genus blossoms regardless
+  // of care/season, the same way a needle genus is always needled.
+  var blossom = !!(gen && gen.blossom)
+  var hue = gen && gen.hue                    // undefined unless the genus breaks the green anchor
   var prune = (state.prune && typeof state.prune === "object") ? state.prune : {}
   var ageYears = Math.max(0, state.ageYears || 0)
   var weather = state.weather && typeof state.weather === "object" ? state.weather : {}
@@ -445,6 +450,11 @@ function grow(gen, state) {
   function finish() {
     if (min[0] > max[0]) { min = [-4, 0, -4]; max = [4, 6, 4] }
     var pot = fitPot(potR, min, max, style)
+    // Split on "+" rather than an exact match so a grafted hybrid
+    // (genus "juniper+willow") still reads as needled/weeping whenever any
+    // ancestor genus in the label is — an exact-equals check would silently
+    // drop the trait the moment any graft joins another genus onto it.
+    var genusParts = ((gen && gen.genus) || "").split("+")
     return {
       potCX: pot.cx, potCZ: pot.cz, potDepth: pot.depth,
       nodes: nodes, clumps: clumps,
@@ -452,10 +462,11 @@ function grow(gen, state) {
       trunkTop: trunkTop, style: style, seed: seed,
       genus: (gen && gen.genus) || "juniper",
       ageScalar: ageScalar, ringCount: ringCount,
-      needle: (gen && gen.genus) === "pine" || (gen && gen.genus) === "juniper",
+      needle: genusParts.indexOf("pine") >= 0 || genusParts.indexOf("juniper") >= 0,
+      weeping: genusParts.indexOf("willow") >= 0,
       maturity: m, potR: pot.r,
       thirst: thirst, health: health,
-      fruit: fruit, berries: berries
+      fruit: fruit, berries: berries, blossom: blossom, hue: hue
     }
   }
 }
