@@ -91,11 +91,15 @@ BarWidget {
 
   // ---- animation clock --------------------------------------------
   property real phase: 0
+  // ~4 Hz is plenty for a sway/breathe on a bar-height mark -- the eye can't
+  // resolve the mark's sub-pixel motion any finer, and this clock never stops
+  // while the bar is up, on every machine that installs the plugin. The phase
+  // step scales with the interval so the motion speed is identical.
   Timer {
-    interval: 90
+    interval: 240
     repeat: true
-    running: root.visible
-    onTriggered: root.phase += 0.09
+    running: root.visible && root.serviceReady
+    onTriggered: root.phase += 0.24
   }
   readonly property bool thirstyStill: root.worst >= 55
   readonly property real swayX: root.serviceReady && !root.thirstyStill

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "TreeGen.js" as TreeGen
@@ -328,12 +329,35 @@ Item {
   // ---- phase clock: gentle foliage shimmer ---------------------
   // Low rate + double-buffered images (below), so re-encoding the frame never
   // blanks the picture. Off while dragging and while the panel is hidden.
+  //
+  // The shimmer is the one thing this component does forever, and each tick is
+  // a ~15-25 ms leaf re-encode on the main thread. Two guards keep it from
+  // cooking an idle machine (it ships wide, so this matters): the tick rate is
+  // ~1.5 Hz (the sway speed is unchanged -- phase advances proportionally), and
+  // on the desktop ornament it stops entirely once the session goes idle, since
+  // nobody is watching a shimmer behind a screensaver. The panel instance is
+  // only alive while you're looking at it, so it skips the presence gate.
   property real phase: 0
+  // Presence gate for the desktop ornament. Prefer the host's own idle service
+  // -- it already folds in a "stay awake" override and the screensaver/lock
+  // state -- and fall back to a private monitor on a non-omarchy host so the
+  // plugin still behaves on its own. The panel instance never gates on this.
+  readonly property var _idleSvc: root.treeService && root.treeService.shell
+    ? root.treeService.shell.firstPartyServiceFor("omarchy.idle") : null
+  IdleMonitor {
+    id: _ownIdle
+    enabled: root.onDesktop && !root._idleSvc
+    timeout: 75
+    respectInhibitors: true
+  }
+  readonly property bool _presenceIdle: root.onDesktop
+    && (root._idleSvc ? root._idleSvc.idle === true : _ownIdle.isIdle)
   Timer {
     id: lifeTimer
-    interval: 260; repeat: true
+    interval: 640; repeat: true
     running: root.active && root.animate && !!root.skeleton && !root.dragging
-    onTriggered: { root.phase += 0.26; root.frame() }
+      && !root._presenceIdle
+    onTriggered: { root.phase += 0.64; root.frame() }
   }
   // A touch of ambient sparkle while the sun is out and the light is actually on.
   // It stays subtle so the tree feels alive without turning into a lens flare.

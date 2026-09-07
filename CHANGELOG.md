@@ -4,6 +4,28 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.4 — 2026-09-07
+
+Performance. A tree on your desktop should be a quiet thing, not a load on
+your machine — this release roughly halves what Omatree costs while it sits
+there.
+
+- **The foliage shimmer re-encodes less often.** Every visible tree redraws
+  its leaves on a timer, and each tick is a real re-raster of the canopy.
+  That timer ran ~4 times a second; it's ~1.5 times a second now. The sway
+  moves at exactly the same speed — the steps between are just wider, and at
+  this size the eye can't tell. This is the bulk of the saving.
+- **The desktop tree holds still when you're not there.** Once the session
+  goes idle — screensaver, lock — the ornament stops animating until you come
+  back; nobody is watching a shimmer behind a screensaver. It follows
+  Omarchy's own idle state, so "stay awake" keeps it moving, and on a
+  non-Omarchy shell it falls back to its own idle check.
+- **The bar mark's sway slowed from ~11 to ~4 ticks a second**, and no longer
+  animates at all while the tree is still waking up. Same motion, far fewer
+  repaints.
+
+Nothing about the tree, its growth, or how you tend it changes.
+
 ## 1.2.3 — 2026-09-05
 
 - The companion perch moved to Omagotchi's new shared "external platform
