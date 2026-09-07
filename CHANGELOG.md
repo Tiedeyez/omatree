@@ -4,6 +4,22 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.5 — 2026-09-07
+
+- **[DISCLOSURE.md](DISCLOSURE.md)** — a plain account of what Omatree does to
+  your machine: every path it writes, every path it reads, every program it
+  runs, and the fact that it makes no network connections at all. Written from
+  a grep of this source, not from memory of the design, and it includes the
+  parts that are worth pausing over — a shell plugin runs unsandboxed with your
+  user account's access, inside the shell's own process.
+- It also explains the two files Omatree reads that belong to *other* plugins:
+  the weather widget's current reading (weather affects how the tree grows) and
+  Omagotchi's state (so the tree keeps still while a companion sleeps). Both
+  read-only, both ignored when absent — but a tree quietly reading your weather
+  is exactly the kind of thing a screenshot cannot tell you.
+
+No code changes in this release.
+
 ## 1.2.4 — 2026-09-07
 
 Performance. A tree on your desktop should be a quiet thing, not a load on

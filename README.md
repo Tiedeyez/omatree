@@ -127,6 +127,16 @@ only by the optional developer scripts in `dev/`.
 
 ## Changelog
 
+## What it does to your computer
+
+**[DISCLOSURE.md](DISCLOSURE.md)** — every file it writes, every file it reads
+(including two that belong to other plugins, and why), every program it runs,
+and what it sends over the network: nothing at all.
+
+Worth knowing before you install any shell plugin, this one included: plugins
+run **unsandboxed, with your user account's access**, inside the shell process
+itself. A small tree on a bar has the same reach as any program you run.
+
 See [`CHANGELOG.md`](CHANGELOG.md) for what changed in each version — the
 same thing `omarchy plugin update` shows you as a diff before it asks you to
 confirm, in plain language.
