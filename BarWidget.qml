@@ -16,20 +16,28 @@ BarWidget {
     : null
   readonly property bool serviceReady: !!treeService && treeService.initialized === true
 
-  // If the Omagotchi bar pet is installed, its creature comes to live in the
-  // tree: it perches on the canopy here, and the panel grows a place to tend
-  // it. Absent (the common case) none of this renders and the mark is exactly
-  // as before. We only read the pet's service — never its files, never its UI.
+  // If a pet bar widget is installed, its creature comes to live in the tree:
+  // it perches on the canopy here. With Omagotchi the panel also grows a place
+  // to tend it; Omarchy Pets is visual only. Absent (the common case) none of
+  // this renders and the mark is exactly as before.
+  //
+  // Omagotchi: read only the pet's service — never its files, never its UI.
   readonly property var petService: bar && bar.shell
     ? bar.shell.serviceFor("slcode777.omagotchi") : null
-  readonly property bool petHere: !!petService && petService.initialized === true
-  readonly property string petMood: petHere ? petService.mood : ""
-  readonly property string petDir: petHere && petService.manifest
+  readonly property bool omagotchiHere: !!petService && petService.initialized === true
+  readonly property string petMood: omagotchiHere ? petService.mood : ""
+  readonly property string petDir: omagotchiHere && petService.manifest
     ? String(petService.manifest.__sourceDir || "") : ""
-  readonly property string petForm: petHere ? String(petService.form || "") : ""
-  readonly property string petAnim: !petHere ? "idle"
+  readonly property string petForm: omagotchiHere ? String(petService.form || "") : ""
+  readonly property string petAnim: !omagotchiHere ? "idle"
     : petService.sleeping ? "sleep"
     : (petService.eating === true ? "eat" : "idle")
+
+  // Omarchy Pets (Codex Pets sprite sheets), used when Omagotchi isn't the
+  // installed pet. Visual only — see CodexPet.qml.
+  CodexPet { id: codexPet }
+  readonly property bool codexHere: !omagotchiHere && codexPet.present
+  readonly property bool petHere: omagotchiHere || codexHere
 
   // Panel lifecycle forwarding, required by the bar's popout switching.
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
@@ -261,8 +269,9 @@ BarWidget {
         color: Qt.rgba(1.0, 0.87, 0.45, root.fireflyTw)
       }
 
-      // the companion, when the bar pet is installed: perched in the canopy,
-      // asleep or watching, its colour following the pet's mood
+      // the companion, when a pet bar widget is installed: perched in the
+      // canopy, asleep or watching. Omagotchi's colour follows its mood;
+      // an Omarchy Pets sprite shows in its own colours.
       Creature {
         id: perch
         visible: root.petHere
@@ -271,6 +280,7 @@ BarWidget {
         form: root.petForm
         anim: root.petAnim
         mood: root.petMood
+        sheetUrl: root.codexHere ? codexPet.sheetUrl : ""
         tint: button.foreground
         accent: Color.accent
         phase: root.phase

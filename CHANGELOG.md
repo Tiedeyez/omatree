@@ -4,6 +4,24 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.6 — 2026-09-08
+
+- **Omarchy Pets can perch in the canopy too.** Until now only Omagotchi's
+  companion came to live in the tree. If you have
+  [Omarchy Pets](https://plugins.omarchy.org/plugin.html?id=raiden-meixelysia.omarchy-pets)
+  (`raiden-meixelysia.omarchy-pets`) in your bar instead, its pet now sits up
+  in Omatree's leaves, playing its idle animation from the same Codex Pets
+  sprite sheet the bar shows.
+- This one is **visual only** — Omarchy Pets has no hunger, mood or lifecycle
+  to read and no service to call, so there's nothing to tend and nothing to
+  feed. Omagotchi's deeper coupling (the tend panel, berry feeding, the
+  desktop roam-perch) is unchanged and still Omagotchi-only. If both are
+  installed, Omagotchi wins the perch.
+- New file `CodexPet.qml`, and two new read paths — both other plugins' own
+  files, both ignored when absent: `~/.config/omarchy/shell.json` (only to see
+  which pet you picked) and `~/.codex/pets/<id>/pet.json` + its sprite sheet.
+  See [DISCLOSURE.md](DISCLOSURE.md).
+
 ## 1.2.5 — 2026-09-07
 
 - **[DISCLOSURE.md](DISCLOSURE.md)** — a plain account of what Omatree does to

@@ -51,23 +51,26 @@ earlier version. It deletes nothing else, ever.
 ## What it reads
 
 Its own state and graft inbox, the active Omarchy theme (through the shell's
-own `Color`/`Style`, so the tree matches your desktop) — **and two files that
+own `Color`/`Style`, so the tree matches your desktop) — **and a few files that
 belong to other plugins**, which deserves an explanation rather than a footnote:
 
 | Path | Why |
 |---|---|
 | `~/.local/state/omarchy/settings/weather-current.json` | the weather where you are affects how the tree grows. Written by Omarchy's weather widget; Omatree only reads it |
-| `~/.local/state/omarchy/omagotchi-state.json` | so the tree knows whether a companion pet is present and whether it is asleep — a sleeping pet means the tree keeps still and does not sparkle |
+| `~/.local/state/omarchy/omagotchi-state.json` | so the tree knows whether an Omagotchi companion is present and whether it is asleep — a sleeping pet means the tree keeps still and does not sparkle |
+| `~/.config/omarchy/shell.json` | only to see whether the Omarchy Pets widget (`raiden-meixelysia.omarchy-pets`) is in your bar and which pet you picked, so that pet can perch in the canopy |
+| `~/.codex/pets/<id>/pet.json` and its sprite sheet | the picked Omarchy Pets pet's own metadata + image, to draw it perched in the tree. Read-only; never modified |
 
-Both are read-only, both are other plugins' own state files on your disk, and
-both are ignored if absent. Omatree reads no documents, no browser data, no
-shell history, and nothing outside the paths listed here.
+All read-only, all other plugins' own files on your disk, and all ignored if
+absent. Omatree reads no documents, no browser data, no shell history, and
+nothing outside the paths listed here.
 
 ## What other programs it runs
 
 | Command | When |
 |---|---|
 | `mkdir -p` | creating its own state directories |
+| `sh -c "find ~/.codex/pets … | sort | head -1"` | only when Omarchy Pets is installed and you haven't picked a specific pet — to find the first one. Lists directory names, reads nothing |
 | `rm -f` | the one-time removal of the obsolete file described above |
 | `omarchy-notification-send` | a desktop notification — the tree is thirsty, a graft took |
 | `omarchy-shell -q shell summon tiedeyez.omatree` | opening its own panel from the desktop ornament |
