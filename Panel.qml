@@ -13,6 +13,7 @@ import qs.Ui
 Panel {
   id: root
   moduleName: "tiedeyez.omatree"
+  ipcTarget: "tiedeyez.omatree"
 
   property var anchorItem: null
   property var hostWidget: null
