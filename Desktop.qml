@@ -207,6 +207,60 @@ PanelWindow {
       transform: Translate { y: root._travelY }
     }
 
+    // the Omarchy Pets squad, wherever the Omagotchi roamer is: its ground
+    // is the POT, not the leaves — the picked pet stands on the rim, and up
+    // to two companions keep to the saucer edges. Visual only, no clicks:
+    // the mask untouched, it rides the descent with the tree.
+    Creature {
+      id: potLead
+      visible: root.showTree && root.ready
+        && root.treeService.codexHere === true
+      opacity: root._fade
+      unit: 7
+      sheetUrl: root.ready && root.treeService.codexHere
+        ? (root.treeService.codexSheetUrl || "") : ""
+      mood: "settled"
+      tint: Color.foreground
+      accent: Color.accent
+      phase: root.perchPhase
+      x: bed.width * 0.44 - width / 2 + Math.sin(root.perchPhase * 0.5) * 1.5
+      y: bed.height * 0.905 - height * 0.30
+      z: 3
+      transform: Translate { y: root._travelY }
+    }
+
+    // and the squad's companions — the ones the bar isn't showing — stay on
+    // the ground by the saucer, two at most. Same rules: silent, unclickable.
+    Repeater {
+      model: {
+        if (!root.ready || !root.treeService.codexHere) return []
+        var all = root.treeService.codexSquad || []
+        var extras = []
+        for (var i = 0; i < all.length && extras.length < 2; i++)
+          if (all[i] && all[i].picked !== true && all[i].sheetUrl !== "")
+            extras.push(all[i].sheetUrl)
+        return extras
+      }
+      delegate: Creature {
+        required property int index
+        required property var modelData
+        visible: root.showTree
+        opacity: root._fade
+        unit: 6.5
+        sheetUrl: modelData
+        mood: "settled"
+        tint: Color.foreground
+        accent: Color.accent
+        phase: root.perchPhase
+        // two a side, flanking the pot, feet on the saucer line
+        x: bed.width * (index === 0 ? 0.16 : 0.78) - width / 2
+           + (index === 0 ? Math.sin(root.perchPhase * 0.55) : Math.cos(root.perchPhase * 0.47)) * 2
+        y: bed.height - height * 0.55
+        z: 3
+        transform: Translate { y: root._travelY }
+      }
+    }
+
     // a thin accent line right at the screen edge the pot rests on
     Rectangle {
       visible: root.showTree
@@ -326,6 +380,45 @@ PanelWindow {
     running: true
   }
 
+  // ---- bed-local canopy geometry ---------------------------------------
+  // The foliage bounding box, from the same hitAreas the pruner cuts with,
+  // as fractions of the bed. Shared by the companion bridge (screen frame)
+  // and the on-ornament perch (bed frame) so both land the same place.
+  function _canopyFractions() {
+    try {
+      var areas = (tree && tree.hitAreas) ? tree.hitAreas : []
+    var minAx = Infinity, maxAx = -Infinity, minAy = Infinity, maxAy = -Infinity
+    for (var k = 0; k < areas.length; k++) {
+      var a = areas[k]
+      if (!a || !isFinite(a.x) || !isFinite(a.y)) continue
+      var aw = isFinite(a.w) ? a.w : 0
+      var ah = isFinite(a.h) ? a.h : 0
+      minAx = Math.min(minAx, a.x);      maxAx = Math.max(maxAx, a.x + aw)
+      minAy = Math.min(minAy, a.y);      maxAy = Math.max(maxAy, a.y + ah)
+    }
+    if (!isFinite(minAx) || maxAx <= minAx || maxAy <= minAy
+        || !isFinite(tree.artW) || tree.artW <= 0
+        || !isFinite(tree.artH) || tree.artH <= 0)
+      return { fx: 0.5, fy: 0.24, span: 0.28 }
+    return {
+      fx: ((minAx + maxAx) / 2) / tree.artW,
+      // partway down into the leaf mass, so a perch sits among the foliage
+      fy: (minAy + (maxAy - minAy) * 0.46) / tree.artH,
+      span: Math.max(0.14, ((maxAx - minAx) / tree.artW) * 0.5)
+    }
+    } catch (e) { console.debug("omatree-desktop canopy:", e); return { fx: 0.5, fy: 0.24, span: 0.28 } }
+  }
+  readonly property var _canopyFrac: root._canopyFractions()
+
+  // The animation clock for anything perched on the desktop tree.
+  property real perchPhase: 0
+  Timer {
+    running: root.showTree
+    interval: 240
+    repeat: true
+    onTriggered: root.perchPhase += 0.24
+  }
+
   function publishCompanionBridge() {
     if (!root.ready || !isFinite(root.bedW) || !isFinite(root.bedH)) return
     // Tree back in the bar → publish an empty set so a stale perch doesn't
@@ -348,7 +441,7 @@ PanelWindow {
     var floor = baseY + bed.height
     var center = baseX + bed.width / 2
     var span = Math.max(28, bed.width * 0.18)
-    // ---- what the companion is allowed to stand on ---------------------
+  // ---- what the companion is allowed to stand on ---------------------
     // Omagotchi reads every file in omagotchi-platforms.d/ and turns each
     // entry into somewhere the pet can walk. The whole easter egg lives on
     // THIS side: we choose what to publish, the pet just goes where the ground
@@ -379,38 +472,18 @@ PanelWindow {
       plats.push({ x1: center - span * 1.15, x2: center - span * 0.35,
                    y: floor - 3, id: "soil-edge", kind: "ledge" })
     }
-    // The canopy: a landing spot up in the actual foliage, so a companion
-    // beamed down from the bar comes to rest IN THE LEAVES rather than at the
-    // pot. hitAreas are the foliage clump rects the pruner uses, in art-px;
-    // map their bounding box into the same screen frame as everything above so
-    // the tractor beam lines up with the tree even when it leans. Follows the
-    // turntable — spin the tree and the leaves-landing moves with it.
+    // The canopy: a landing spot up in the actual foliage. Same geometry as
+    // the on-ornament perch's, in the screen frame instead of the bed's.
     var areas = (tree && tree.hitAreas) ? tree.hitAreas : []
-    if (areas.length > 0 && isFinite(tree.artW) && tree.artW > 0
-        && isFinite(tree.artH) && tree.artH > 0) {
-      var minAx = Infinity, maxAx = -Infinity, minAy = Infinity, maxAy = -Infinity
-      for (var k = 0; k < areas.length; k++) {
-        var a = areas[k]
-        if (!a || !isFinite(a.x) || !isFinite(a.y)) continue
-        var aw = isFinite(a.w) ? a.w : 0
-        var ah = isFinite(a.h) ? a.h : 0
-        minAx = Math.min(minAx, a.x);      maxAx = Math.max(maxAx, a.x + aw)
-        minAy = Math.min(minAy, a.y);      maxAy = Math.max(maxAy, a.y + ah)
-      }
-      if (isFinite(minAx) && maxAx > minAx && maxAy > minAy) {
-        var fcx = ((minAx + maxAx) / 2) / tree.artW
-        // partway down into the leaf mass, so the pet nestles among the
-        // foliage rather than balancing on the very crown
-        var fcy = (minAy + (maxAy - minAy) * 0.46) / tree.artH
-        var canopyCx = baseX + fcx * bed.width
-        var canopyCy = baseY + fcy * bed.height
-        // Span the whole leaf mass, so the (fixed, vertical) tractor beam lands
-        // in the leaves wherever over the foliage it comes down.
-        var canopySpan = Math.max(24,
-          ((maxAx - minAx) / tree.artW) * bed.width * 0.5)
-        plats.push({ x1: canopyCx - canopySpan, x2: canopyCx + canopySpan,
-                     y: canopyCy, id: "canopy", kind: "perch" })
-      }
+    if (root.ready && areas.length > 0) {
+      var c = root._canopyFrac
+      var canopyCx = baseX + c.fx * bed.width
+      var canopyCy = baseY + c.fy * bed.height
+      // Span the whole leaf mass, so the (fixed, vertical) tractor beam lands
+      // in the leaves wherever over the foliage it comes down.
+      var canopySpan = Math.max(24, c.span * bed.width)
+      plats.push({ x1: canopyCx - canopySpan, x2: canopyCx + canopySpan,
+                   y: canopyCy, id: "canopy", kind: "perch" })
     }
     companionBridge.setText(JSON.stringify({
       version: 1,

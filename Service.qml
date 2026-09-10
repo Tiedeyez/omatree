@@ -37,6 +37,30 @@ Item {
   readonly property var petService: shell ? shell.serviceFor("slcode777.omagotchi") : null
   readonly property bool petHere: !!petService && petService.initialized === true
 
+  // The second companion, Omarchy Pets (raiden-meixelysia.omarchy-pets): a
+  // bar-resident Codex Pets sprite with no service of its own. One CodexPet
+  // lives HERE, in the headless tree brain, so the bar mark, the panel
+  // companion strip and the desktop ornament all resolve the sheet once
+  // instead of each reading shell.json for itself.
+  //
+  // Omagotchi and Omarchy Pets coexist, each on its own ground: Omagotchi
+  // keeps the canopy and the roam; the Codex squad keeps the pot and the
+  // saucer (see the hosts). codexHere is therefore NOT gated on Omagotchi —
+  // the only precedence left is that the canopy seat goes to whichever pet
+  // can actually be tended, and the pot is the squad's own place.
+  property var codexPet: CodexPet {}
+  readonly property bool codexHere:
+    root.codexPet && root.codexPet.present === true
+  readonly property url codexSheetUrl:
+    root.codexHere ? (root.codexPet.sheetUrl || "") : ""
+  readonly property string codexPetName:
+    root.codexPet && typeof root.codexPet.displayName === "string"
+      ? root.codexPet.displayName : ""
+  // The squad: every installed Codex pet the resolver found, the picked one
+  // first. An empty list simply means none.
+  readonly property var codexSquad:
+    root.codexHere ? (root.codexPet.squadMembers || []) : []
+
   // A quiet handoff flag: Desktop.qml's "graft" quick-action has no direct
   // reference to the Panel (it opens it by shelling out to `omarchy-shell
   // summon`, a separate window entirely) — this is the one thing they both

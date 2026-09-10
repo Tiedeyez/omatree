@@ -34,9 +34,11 @@ BarWidget {
     : (petService.eating === true ? "eat" : "idle")
 
   // Omarchy Pets (Codex Pets sprite sheets), used when Omagotchi isn't the
-  // installed pet. Visual only — see CodexPet.qml.
-  CodexPet { id: codexPet }
-  readonly property bool codexHere: !omagotchiHere && codexPet.present
+  // installed pet. Visual only. Resolved once by the tree Service (see
+  // CodexPet.qml there) and shared with the panel and desktop — no separate
+  // shell.json watch of its own.
+  readonly property bool codexHere: !!treeService && treeService.codexHere === true
+  readonly property url codexSheet: codexHere ? treeService.codexSheetUrl : ""
   readonly property bool petHere: omagotchiHere || codexHere
 
   // Panel lifecycle forwarding, required by the bar's popout switching.
@@ -269,23 +271,37 @@ BarWidget {
         color: Qt.rgba(1.0, 0.87, 0.45, root.fireflyTw)
       }
 
-      // the companion, when a pet bar widget is installed: perched in the
-      // canopy, asleep or watching. Omagotchi's colour follows its mood;
-      // an Omarchy Pets sprite shows in its own colours.
+      // the companion in the canopy when it can actually be tended —
+      // Omagotchi — asleep or watching.
       Creature {
         id: perch
-        visible: root.petHere
+        visible: root.omagotchiHere
         unit: content.u * 0.8
         petDir: root.petDir
         form: root.petForm
         anim: root.petAnim
         mood: root.petMood
-        sheetUrl: root.codexHere ? codexPet.sheetUrl : ""
         tint: button.foreground
         accent: Color.accent
         phase: root.phase
         x: parent.width * 0.62 - width / 2
         y: (trunk.y - content.pads * content.padH * 0.66) - height / 2
+      }
+
+      // The Omarchy Pets squad at the pot: no canopy clash by design — the
+      // tending creature has the leaves; the picked Codex pet stands on the
+      // pot's rim, its own ground. No sheet -> nothing shows.
+      Creature {
+        id: potLead
+        visible: root.codexHere && String(root.treeService && root.treeService.codexSheetUrl || "") !== ""
+        unit: content.u * 0.72
+        sheetUrl: root.codexHere ? (root.treeService ? root.treeService.codexSheetUrl : "") : ""
+        mood: "settled"
+        tint: button.foreground
+        accent: Color.accent
+        phase: root.phase
+        x: parent.width * 0.5 + width * 0.22
+        y: pot.y - height * 0.58
       }
     }
   }

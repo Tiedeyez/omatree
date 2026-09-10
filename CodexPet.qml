@@ -82,6 +82,62 @@ QtObject {
   readonly property string petId: _pickedId !== "" ? _pickedId : _firstId
   readonly property string petDir: installed && petId !== "" ? petsDir + "/" + petId : ""
 
+  // ---- the squad -------------------------------------------------------------
+  // Every pet in the folder can come to the tree, not only the one the bar
+  // shows. One bounded read-only sweep lists each directory's pet.json and
+  // sprite sheet (capped at 8 members and 500 entries, exactly like the pets
+  // plugin's own limits — Omatree just walks the same ground closer). The
+  // picked pet still leads; the rest are companions looking for ground.
+  // Omagotchi keeps precedence out in Service: while it is installed, no
+  // squad forms at all.
+  readonly property Process _squadScan: Process {
+    running: r.installed && r.petsDir !== ""
+    command: ["python3", "-c",
+      "import json,os,sys\n"
+      + "root=sys.argv[1]; out=[]\n"
+      + "try: entries=sorted(os.listdir(root))\n"
+      + "except OSError: entries=[]\n"
+      + "for name in entries[:500]:\n"
+      + "  if len(out)>=8: break\n"
+      + "  dirp=os.path.join(root,name); pj=os.path.join(dirp,'pet.json')\n"
+      + "  try:\n"
+      + "    if not os.path.isdir(dirp): continue\n"
+      + "    m=json.load(open(pj))\n"
+      + "    sp=m.get('spritesheetPath')\n"
+      + "    if not isinstance(sp,str) or '/' in sp or '..' in sp: continue\n"
+      + "    if not os.path.isfile(os.path.join(dirp,sp)): continue\n"
+      + "    nm=m.get('displayName')\n"
+      + "    out.append({'id':name,'name':str(nm) if isinstance(nm,str) and nm else name,"
+      + " 'dir':dirp,'sheet':sp})\n"
+      + "  except (OSError,ValueError): continue\n"
+      + "print(json.dumps(out))",
+      r.petsDir]
+    stdout: StdioCollector { id: _squadOut; waitForEnd: true }
+    onExited: {
+      try { r._squadRaw = JSON.parse(_squadOut.text || "[]") }
+      catch (e) { r._squadRaw = [] }
+    }
+  }
+  property var _squadRaw: []
+
+  // Resolved squad view: file:// sheet urls, the picked member flagged.
+  readonly property var squadMembers: {
+    var out = []
+    for (var i = 0; i < r._squadRaw.length; i++) {
+      var s = r._squadRaw[i]
+      if (!s || !s.dir || !s.sheet) continue
+      out.push({
+        id: s.id,
+        name: s.name || s.id,
+        picked: s.id === r.petId,
+        sheetUrl: Qt.resolvedUrl("file://" + s.dir + "/" + s.sheet)
+      })
+    }
+    // the picked pet leads; never duplicate it below
+    out.sort(function (a, b) { return (b.picked === true) - (a.picked === true) })
+    return out
+  }
+
   // ---- the pet's own metadata: the sprite sheet path + its name ----------
   readonly property FileView _petJson: FileView {
     path: r.petDir !== "" ? r.petDir + "/pet.json" : ""

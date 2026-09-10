@@ -58,8 +58,8 @@ belong to other plugins**, which deserves an explanation rather than a footnote:
 |---|---|
 | `~/.local/state/omarchy/settings/weather-current.json` | the weather where you are affects how the tree grows. Written by Omarchy's weather widget; Omatree only reads it |
 | `~/.local/state/omarchy/omagotchi-state.json` | so the tree knows whether an Omagotchi companion is present and whether it is asleep — a sleeping pet means the tree keeps still and does not sparkle |
-| `~/.config/omarchy/shell.json` | only to see whether the Omarchy Pets widget (`raiden-meixelysia.omarchy-pets`) is in your bar and which pet you picked, so that pet can perch in the canopy |
-| `~/.codex/pets/<id>/pet.json` and its sprite sheet | the picked Omarchy Pets pet's own metadata + image, to draw it perched in the tree. Read-only; never modified |
+| `~/.config/omarchy/shell.json` | only to see whether the Omarchy Pets widget (`raiden-meixelysia.omarchy-pets`) is in your bar and which pet you picked, so that pet can stand on the pot |
+| `~/.codex/pets/<id>/pet.json` and its sprite sheet | every installed Omarchy Pets pet's own metadata + image (bounded to 8 entries — the squad), to draw its members on the pot and saucer and name them in the panel. Read-only; never modified |
 
 All read-only, all other plugins' own files on your disk, and all ignored if
 absent. Omatree reads no documents, no browser data, no shell history, and
@@ -71,6 +71,7 @@ nothing outside the paths listed here.
 |---|---|
 | `mkdir -p` | creating its own state directories |
 | `sh -c "find ~/.codex/pets … | sort | head -1"` | only when Omarchy Pets is installed and you haven't picked a specific pet — to find the first one. Lists directory names, reads nothing |
+| `python3 -c "…"` (squad scan) | only when Omarchy Pets is installed: reads each pet's `pet.json` under `~/.codex/pets` to collect name, directory and sprite-sheet path — capped at the first 500 entries and 8 valid pets, skips unparseable ones |
 | `rm -f` | the one-time removal of the obsolete file described above |
 | `omarchy-notification-send` | a desktop notification — the tree is thirsty, a graft took |
 | `omarchy-shell -q shell summon tiedeyez.omatree` | opening its own panel from the desktop ornament |

@@ -25,6 +25,9 @@ Panel {
   // window onto both. Nothing here reads the pet's files or opens its UI.
   property var petService: null
   readonly property bool petHere: !!petService && petService.initialized === true
+  // The second companion, Omarchy Pets (visual only — no service, no moods):
+  // it shows in this strip, it just doesn't have needs to tend here.
+  readonly property bool codexHere: root.ready && root.treeService.codexHere === true
   // For the live sprite snapshot: the pet plugin's own directory (stamped onto
   // its manifest by the shell), its current form, and idle/sleep/eat.
   readonly property string petDir: petHere && petService.manifest
@@ -131,8 +134,8 @@ Panel {
       return s
     }
     var main = ["tree", "water", "lamp", "feed", "prune", "graft"]
-    // the companion, when the pet is installed: its rows join the cursor in
-    // reading order, right where they sit under the tree's own meters
+    // the companion, when it is one we can TEND (Omagotchi): its rows join
+    // the cursor in reading order. Omarchy Pets is visual only — no rows.
     if (root.petHere) {
       if (root.petValue("feed") >= 8) main.push("petfeed")
       if (root.petValue("wash") >= 8) main.push("petwash")
@@ -292,7 +295,30 @@ Panel {
   // "in my branches" while the pet is plainly down on the floor of the
   // desktop was the tree telling a small lie.
   function petLine() {
-    if (!root.petHere) return ""
+    // Omagotchi first: when it is here the main line tells its mood, and the
+    // Codex squad gets its own row below. When the squad is the only
+    // companion, the line names it — no invented feelings.
+    if (!root.petHere) {
+      if (root.codexHere) {
+        var members = root.treeService.codexSquad || []
+        var lead = root.treeService.codexPetName || ""
+        if (members.length <= 1) {
+          return lead !== "" ? lead + " rests in the branches"
+            : "someone calm is resting in the branches"
+        }
+        var names = []
+        for (var i = 0; i < members.length && names.length < members.length; i++) {
+          var n = members[i] ? String(members[i].name || "") : ""
+          if (n !== "" && names.indexOf(n) < 0) names.push(n)
+        }
+        if (names.length === 0) return "a squad of " + members.length + " rests in the branches"
+        var list = names[0]
+        for (var j = 1; j < names.length; j++)
+          list += (j === names.length - 1 ? " and " : ", ") + names[j]
+        return "the squad — " + list + " — rests in the branches"
+      }
+      return ""
+    }
     switch (root.petService.mood) {
     case "egg": return "something small is waiting to hatch"
     case "sleeping": return "something small is asleep"
@@ -315,6 +341,25 @@ Panel {
     }
     return row.label.toUpperCase()
   }
+  // The squad's own line, for the by-the-pot row: names only, no invented
+  // feelings. When the squad is the ONLY companion this same content is the
+  // main line; when Omagotchi is here as well it shares the strip.
+  function squadLine() {
+    var members = root.treeService ? (root.treeService.codexSquad || []) : []
+    if (members.length === 0) return ""
+    var names = []
+    for (var i = 0; i < members.length && names.length < members.length; i++) {
+      var n = members[i] ? String(members[i].name || "") : ""
+      if (n !== "" && names.indexOf(n) < 0) names.push(n)
+    }
+    if (names.length === 0) return "the squad sits on the pot"
+    var list = names[0]
+    for (var j = 1; j < names.length; j++)
+      list += (j === names.length - 1 ? " and " : ", ") + names[j]
+    return names.length > 1
+      ? "the squad — " + list + " — sits on the pot"
+      : list + " sits on the pot"
+  }
   function companionAction(kind) {
     if (!root.petHere) return
     var p = root.petService
@@ -333,7 +378,7 @@ Panel {
   Timer {
     id: companionClock
     property real t: 0
-    running: root.opened && root.petHere
+    running: root.opened && (root.petHere || root.codexHere)
     repeat: true
     interval: 90
     onTriggered: t += 0.09
@@ -1070,15 +1115,18 @@ Panel {
         }
 
         // ---- the companion ---------------------------------------
-        // Only when the Omagotchi bar pet is installed: its creature has come
-        // to live in the tree. Tend it here — feed, wash, a moment with it —
-        // without leaving the panel. Fully in the panel's keyboard cursor
-        // (petfeed / petwash / pethand), and its own pill still works too.
+        // Omagotchi (slcode777.omagotchi): its creature's needs join the
+        // panel — feed, wash, a moment with it — fully in the panel's
+        // keyboard cursor (petfeed / petwash / pethand). Omarchy Pets: the
+        // strip shows the sprite and a line of company, but it has no needs
+        // to read, so nothing is offered rather than buttons that do
+        // nothing.
         Column {
           id: companion
           width: parent.width
           spacing: Style.space(10)
-          visible: root.petHere && !settingsCol.open && root.planted && !root.pruning
+          visible: (root.petHere || root.codexHere)
+            && !settingsCol.open && root.planted && !root.pruning
 
           Rectangle {   // hairline: set apart from the tree's own meters
             width: parent.width; height: 1
@@ -1092,10 +1140,12 @@ Panel {
             Creature {
               anchors.verticalCenter: parent.verticalCenter
               unit: Style.space(3)
-              petDir: root.petDir
-              form: root.petForm
-              anim: root.petAnim
-              mood: root.petHere ? root.petService.mood : "happy"
+              petDir: root.codexHere ? "" : root.petDir
+              form: root.codexHere ? "" : root.petForm
+              anim: root.codexHere ? "" : root.petAnim
+              mood: root.petHere ? root.petService.mood
+                : root.codexHere ? "settled" : "happy"
+              sheetUrl: root.codexHere ? (root.treeService.codexSheetUrl || "") : ""
               tint: root.fg
               accent: root.accent
               phase: companionClock.t
@@ -1105,6 +1155,39 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(52)
               text: root.petLine()
+              color: Qt.alpha(root.fg, 0.6)
+              font.family: root.uiFont
+              font.pixelSize: Style.font.bodySmall
+              font.italic: true
+              wrapMode: Text.Wrap
+              renderType: Text.QtRendering
+            }
+          }
+
+          // Omarchy Pets coexists, on its own ground: it tends the saucer,
+          // not the leaves. This second row exists only while BOTH kinds are
+          // around — single-companion layouts already carry the name above.
+          Row {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.petHere && root.codexHere
+
+            Creature {
+              anchors.verticalCenter: parent.verticalCenter
+              unit: Style.space(2.4)
+              sheetUrl: (root.treeService && root.treeService.codexSquad
+                && root.treeService.codexSquad.length > 0)
+                ? root.treeService.codexSquad[0].sheetUrl : ""
+              mood: "settled"
+              tint: root.fg
+              accent: root.accent
+              phase: companionClock.t
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - Style.space(52)
+              text: root.squadLine()
               color: Qt.alpha(root.fg, 0.6)
               font.family: root.uiFont
               font.pixelSize: Style.font.bodySmall
@@ -1193,8 +1276,11 @@ Panel {
             }
           }
 
-          // a moment with it — or a nudge awake — always offered
+          // a moment with it — or a nudge awake — always offered, but only
+          // when there is a service behind it (Omagotchi). Omarchy Pets has
+          // no API to touch, so this quietly isn't there.
           Item {
+            visible: root.petHere
             anchors.horizontalCenter: parent.horizontalCenter
             width: handText.implicitWidth + Style.space(16)
             height: handText.implicitHeight + Style.space(8)

@@ -4,6 +4,24 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.8 — 2026-09-09
+
+- **Give it a squad.** Omarchy Pets used to send only the pet the bar shows;
+  now every installed Codex pet comes to the tree. The picked pet (the one
+  your bar widget shows) stands on the pot's rim; up to two companions keep
+  to the saucer edges. The panel's companion strip names the squad — "the
+  squad — Buddhist and Stamuk — sits on the pot".
+- **Both pets share the tree.** Until now Omagotchi won outright and Omarchy
+  Pets went dark if both were installed. They now have their own areas that
+  best fit them: Omagotchi keeps the canopy and its roam (the branch and
+  saucer perch bridge still publishes, for its walking), while the Omarchy
+  Pets squad has the pot and the saucer. Omagotchi's tend panel — feed,
+  wash, a moment — stays Omagotchi's, since the Codex squad has no needs to
+  tend.
+- New read path, documented in [DISCLOSURE.md](DISCLOSURE.md): a bounded
+  read-only sweep of `~/.codex/pets/*/pet.json` (first 500 entries, 8 valid
+  pets) to find each squad member's name and sprite sheet.
+
 ## 1.2.6 — 2026-09-08
 
 - **Omarchy Pets can perch in the canopy too.** Until now only Omagotchi's
