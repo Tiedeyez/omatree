@@ -4,6 +4,24 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.9 — 2026-09-09
+
+- **Light finally answers to the sun.** The light need rose by the minute no
+  matter what the sky was doing, so the tree could sit "shaded" at noon with
+  full sun, and clicking the lamp was the only relief ever — even in
+  daylight, where its own copy says it is "sunshine on demand" for the dark.
+  Now daylight stalls the need and slowly drains stored dimness (−0.11 per
+  active minute); only after dark does it climb (+0.085), which is exactly
+  when the lamp lever means something. Clicking it at noon no longer moves a
+  number the sun already paid.
+- **The save file kept up with the tree.** The heartbeat's flush was gated
+  on `careCount % 5` — but careCount only moves when you tend the tree, so
+  the gate was permanently open for one careCount value and permanently
+  shut for the next: hours could pass with no save at all (caught live:
+  `careCount=137`, no flush for the whole session since the last care
+  click). Saving now runs on the heartbeat's own count — every 5th minute —
+  so needs are written whatever happened between care actions.
+
 ## 1.2.8 — 2026-09-09
 
 - **Give it a squad.** Omarchy Pets used to send only the pet the bar shows;

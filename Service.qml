@@ -567,9 +567,16 @@ Item {
     //
     // Water — the daily ritual. Asks by the end of a day's use.
     thirstLevel = Math.min(100, thirstLevel + 0.145)
-    // Light — a slower slide; a tree left in a dim room complains in days,
-    // not hours, and the lamp is there for the dark half of the year.
-    lightLevel = Math.min(100, lightLevel + 0.085)
+    // Light — it is the SUN that answers this need, not the lever. By day
+    // the blinds are open by default: the need not only stops climbing, it
+    // drains slowly, so a dim room's stored debt clears over a day of real
+    // use. Only after dark does the slide begin — which is exactly the job
+    // the copy already gives the lamp: the dark half of the year, sunshine
+    // on demand. Clicking the lamp at noon moves a number with no meaning.
+    if (daylight)
+      lightLevel = Math.max(0, lightLevel - 0.11)
+    else
+      lightLevel = Math.min(100, lightLevel + 0.085)
     // Feeding — real tree are fed every few weeks in the growing season.
     soilLevel = Math.min(100, soilLevel + 0.013)
     // Form — pruning is seasonal work. It should be something you choose to
@@ -975,6 +982,7 @@ Item {
   // -------------------------------------------------------------------------
   // Heartbeats. The minute tick runs the plant's life; the daily tick crosses
   // real calendar days so the tree keeps ageing "with you" overnight.
+  property int fileTick: 0
   Timer {
     id: heartbeat
     interval: 60 * 1000
@@ -983,7 +991,13 @@ Item {
     onTriggered: {
       root.nowMs = Date.now()
       root.applyActiveMinute()
-      if (root.careCount % 5 === 0) root.flush()
+      // save on the minute's own rhythm — every 5th heartbeat. Gating on
+      // careCount % 5 was a live bug: careCount only moves when you tend the
+      // tree, so the gate was permanently open for one careCount value and
+      // permanently shut for the next — hours between flushes, needs saving
+      // whatever the tree felt in between.
+      fileTick += 1
+      if (fileTick % 5 === 0) root.flush()
     }
   }
 
