@@ -22,6 +22,17 @@ asks you to confirm; this file is the same story in plain language.
   click). Saving now runs on the heartbeat's own count — every 5th minute —
   so needs are written whatever happened between care actions.
 
+## 1.2.7 — 2026-09-09
+
+- **The panel takes external commands.** The panel base only registers its
+  IPC handler when the widget declares a target — and Omatree never had.
+  That left `omarchy-shell tiedeyez.omatree open` (and any script or
+  keybind that wanted to pop the tree open) talking to nothing. It now
+  declares `ipcTarget: "tiedeyez.omatree"`, the same pattern every other
+  plugin panel uses, so other things on the desktop can call it in. The
+  desktop ornament's summon flow already worked by a roundabout
+  (`omarchy-shell summon`); this makes the front door real.
+
 ## 1.2.8 — 2026-09-09
 
 - **Give it a squad.** Omarchy Pets used to send only the pet the bar shows;
