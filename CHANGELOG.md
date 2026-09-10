@@ -4,6 +4,19 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.11 — 2026-09-09
+
+- **The Omagotchi snapshot draws in the bar and panel for real.** The sprite
+  directory came from the pet service's `manifest.__sourceDir` — but the
+  shell strips that field from third-party plugin manifests before handing
+  them out (publicPluginManifest, a privacy rule for the shell), so the
+  lookup was always empty and the creature appeared with no sprite at all
+  (in panel and bar widget alike; the squad's Codex sheet had been masking
+  it in the panel). Both hosts now keep `__sourceDir` where present and
+  fall back to the plugin's standard install dir (`~/.config/omarchy/
+  plugins/<id>`) where the shell removed it. Verified live: the mood row
+  shows the tinted gremlin, the squad row shows Buddhist's own sheet.
+
 ## 1.2.10 — 2026-09-09
 
 - **The creature line shows the creature its line is about.** With Omagotchi

@@ -26,8 +26,15 @@ BarWidget {
     ? bar.shell.serviceFor("slcode777.omagotchi") : null
   readonly property bool omagotchiHere: !!petService && petService.initialized === true
   readonly property string petMood: omagotchiHere ? petService.mood : ""
-  readonly property string petDir: omagotchiHere && petService.manifest
-    ? String(petService.manifest.__sourceDir || "") : ""
+  readonly property string petDir: {
+    if (!omagotchiHere) return ""
+    var d = petService.manifest ? String(petService.manifest.__sourceDir || "") : ""
+    if (d !== "") return d
+    // Third-party plugin services receive their manifest through
+    // publicPluginManifest, which strips __sourceDir — no sprite home there.
+    // Fall back to the plugin's standard install dir (id = folder name).
+    return (Quickshell.env("HOME") || "") + "/.config/omarchy/plugins/slcode777.omagotchi"
+  }
   readonly property string petForm: omagotchiHere ? String(petService.form || "") : ""
   readonly property string petAnim: !omagotchiHere ? "idle"
     : petService.sleeping ? "sleep"

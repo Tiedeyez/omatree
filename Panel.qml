@@ -28,10 +28,15 @@ Panel {
   // The second companion, Omarchy Pets (visual only — no service, no moods):
   // it shows in this strip, it just doesn't have needs to tend here.
   readonly property bool codexHere: root.ready && root.treeService.codexHere === true
-  // For the live sprite snapshot: the pet plugin's own directory (stamped onto
-  // its manifest by the shell), its current form, and idle/sleep/eat.
-  readonly property string petDir: petHere && petService.manifest
-    ? String(petService.manifest.__sourceDir || "") : ""
+  // For the live sprite snapshot: the pet plugin's directory. The service's
+  // manifest copy has __sourceDir stripped (publicPluginManifest, third-party
+  // plugins), so fall back to the plugin's standard install dir.
+  readonly property string petDir: {
+    if (!petHere) return ""
+    var d = petService.manifest ? String(petService.manifest.__sourceDir || "") : ""
+    if (d !== "") return d
+    return (Quickshell.env("HOME") || "") + "/.config/omarchy/plugins/slcode777.omagotchi"
+  }
   readonly property string petForm: petHere ? String(petService.form || "") : ""
   readonly property string petAnim: !petHere ? "idle"
     : petService.sleeping ? "sleep"
