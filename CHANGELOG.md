@@ -4,6 +4,29 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.10 — 2026-09-09
+
+- **The creature line shows the creature its line is about.** With Omagotchi
+  and Omarchy Pets both installed, the mood row's sprite was gated on the
+  squad's presence — so the line said "the creature is at ease" next to the
+  Omarchy Pets sheet instead of the Omagotchi it was describing. The row now
+  shows the Omagotchi whenever it is here; the Codex pet's sheet only
+  appears when the squad is the sole companion.
+- **The squad line stopped guessing where it sits.** "Sits on the pot" was
+  hardcoded; the line now follows the truth — out with the desktop
+  ornament it stands at the pot, kept in the bar it lives with the bar
+  mark. (Hovering it still gets a pointer cursor; it leads to nothing.)
+- **Removed "a moment with it".** The pet button offered a hand but had
+  nothing behind it — the action went to the pet service, but the panel
+  showed no state the click ever changed, so it read as a control that did
+  nothing. It is gone, along with its keyboard cursor target (pethand) and
+  the now-dead wake/pet handling; feed and wash remain, and still only
+  appear when they're actually needed.
+- **"SET ME OUT" speaks for itself.** The italic location caption beneath
+  the toggle ("out in your lower-right corner" / "kept here in the bar")
+  is removed; the toggle's own state — colored when out — is the whole
+  message.
+
 ## 1.2.9 — 2026-09-09
 
 - **Light finally answers to the sun.** The light need rose by the minute no

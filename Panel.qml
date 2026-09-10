@@ -19,7 +19,7 @@ Panel {
   property var hostWidget: null
   property var treeService: null
   // Set by the bar widget only when the Omagotchi pet is installed. The panel
-  // grows a companion strip that tends it — feed, wash, a moment with it —
+  // grows a companion strip that tends it — feed, wash —
   // by calling the pet's own service functions (the same calls its own bar
   // pill makes). Its pill still works and stays in step; this is the shared
   // window onto both. Nothing here reads the pet's files or opens its UI.
@@ -134,12 +134,12 @@ Panel {
       return s
     }
     var main = ["tree", "water", "lamp", "feed", "prune", "graft"]
-    // the companion, when it is one we can TEND (Omagotchi): its rows join
-    // the cursor in reading order. Omarchy Pets is visual only — no rows.
+    // the companion, when it is one we can TEND (Omagotchi): feed and
+    // wash rows join the cursor in reading order. Omarchy Pets is
+    // visual only — no rows.
     if (root.petHere) {
       if (root.petValue("feed") >= 8) main.push("petfeed")
       if (root.petValue("wash") >= 8) main.push("petwash")
-      main.push("pethand")
     }
     main.push("desktop", "settings")
     return main
@@ -206,9 +206,6 @@ Panel {
       break
     case "petfeed": root.companionAction("feed"); break
     case "petwash": root.companionAction("wash"); break
-    case "pethand":
-      root.companionAction(root.petHere && root.petService.sleeping ? "wake" : "pet")
-      break
     case "growback":
       if (root.ready) { root.treeService.pruneReset(); root.flashNote("growing back") }
       break
@@ -344,21 +341,25 @@ Panel {
   // The squad's own line, for the by-the-pot row: names only, no invented
   // feelings. When the squad is the ONLY companion this same content is the
   // main line; when Omagotchi is here as well it shares the strip.
+  // Location matches where the tree's own hosts actually set the squad
+  // down: out with the desktop tile it stands at the pot and the saucer;
+  // kept in the bar it lives with the bar mark.
   function squadLine() {
     var members = root.treeService ? (root.treeService.codexSquad || []) : []
     if (members.length === 0) return ""
+    var at = root.treeService.desktopEnabled ? "sits on the pot" : "keeps here in the bar"
     var names = []
     for (var i = 0; i < members.length && names.length < members.length; i++) {
       var n = members[i] ? String(members[i].name || "") : ""
       if (n !== "" && names.indexOf(n) < 0) names.push(n)
     }
-    if (names.length === 0) return "the squad sits on the pot"
+    if (names.length === 0) return "the squad " + at
     var list = names[0]
     for (var j = 1; j < names.length; j++)
       list += (j === names.length - 1 ? " and " : ", ") + names[j]
     return names.length > 1
-      ? "the squad — " + list + " — sits on the pot"
-      : list + " sits on the pot"
+      ? "the squad — " + list + " — " + at
+      : list + " " + at
   }
   function companionAction(kind) {
     if (!root.petHere) return
@@ -372,8 +373,6 @@ Panel {
       root.flashNote("gave it a berry")
     }
     else if (kind === "wash") { p.scrub(25); root.flashNote("I rinsed it clean") }
-    else if (kind === "pet") { p.petThePet(); root.flashNote("it leans into your hand") }
-    else if (kind === "wake") { p.wakeUp(); root.flashNote("it stirs awake") }
   }
   Timer {
     id: companionClock
@@ -1116,8 +1115,8 @@ Panel {
 
         // ---- the companion ---------------------------------------
         // Omagotchi (slcode777.omagotchi): its creature's needs join the
-        // panel — feed, wash, a moment with it — fully in the panel's
-        // keyboard cursor (petfeed / petwash / pethand). Omarchy Pets: the
+        // panel — feed, wash — fully in the panel's
+        // keyboard cursor (petfeed / petwash). Omarchy Pets: the
         // strip shows the sprite and a line of company, but it has no needs
         // to read, so nothing is offered rather than buttons that do
         // nothing.
@@ -1140,12 +1139,16 @@ Panel {
             Creature {
               anchors.verticalCenter: parent.verticalCenter
               unit: Style.space(3)
-              petDir: root.codexHere ? "" : root.petDir
-              form: root.codexHere ? "" : root.petForm
-              anim: root.codexHere ? "" : root.petAnim
+              // The creature on the main line is the one its line is ABOUT:
+              // Omagotchi whenever it is here (this row names its mood), the
+              // Codex pet only when the squad is the sole companion.
+              petDir: root.petHere ? root.petDir : ""
+              form: root.petHere ? root.petForm : ""
+              anim: root.petHere ? root.petAnim : ""
               mood: root.petHere ? root.petService.mood
                 : root.codexHere ? "settled" : "happy"
-              sheetUrl: root.codexHere ? (root.treeService.codexSheetUrl || "") : ""
+              sheetUrl: !root.petHere && root.codexHere
+                ? (root.treeService.codexSheetUrl || "") : ""
               tint: root.fg
               accent: root.accent
               phase: companionClock.t
@@ -1194,6 +1197,13 @@ Panel {
               font.italic: true
               wrapMode: Text.Wrap
               renderType: Text.QtRendering
+
+              MouseArea {
+                anchors.fill: parent
+                enabled: root.squadLine() !== ""
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+              }
             }
           }
 
@@ -1270,47 +1280,12 @@ Panel {
                   cursorShape: Qt.PointingHandCursor
                   onContainsMouseChanged: if (containsMouse && root.kbActive)
                     root.kbFocus = cPill.kbName
-                  onClicked: root.companionAction(petRow.modelData.act)
-                }
-              }
-            }
-          }
-
-          // a moment with it — or a nudge awake — always offered, but only
-          // when there is a service behind it (Omagotchi). Omarchy Pets has
-          // no API to touch, so this quietly isn't there.
-          Item {
-            visible: root.petHere
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: handText.implicitWidth + Style.space(16)
-            height: handText.implicitHeight + Style.space(8)
-            readonly property bool lit: handMa.containsMouse
-              || (root.kbActive && root.kbFocus === "pethand")
-
-            Text {
-              id: handText
-              anchors.centerIn: parent
-              text: (root.petHere && root.petService.sleeping)
-                ? "▸ wake it" : "▸ a moment with it"
-              color: Qt.alpha(root.accent, parent.lit ? 0.95 : 0.7)
-              font.family: root.uiFont
-              font.pixelSize: root.capSize
-              font.letterSpacing: 1
-              renderType: Text.QtRendering
-            }
-
-            MouseArea {
-              id: handMa
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onContainsMouseChanged: if (containsMouse && root.kbActive)
-                root.kbFocus = "pethand"
-              onClicked: root.companionAction(
-                (root.petHere && root.petService.sleeping) ? "wake" : "pet")
-            }
-          }
-        }
+                   onClicked: root.companionAction(petRow.modelData.act)
+                 }
+               }
+             }
+           }
+         }
 
         // ---- set me out ------------------------------------------
         // Putting the tree on the desktop is something you do to live with it,
@@ -1379,23 +1354,6 @@ Panel {
                 root.flashNote(putOut ? "out on your desktop" : "home in the bar")
               }
             }
-          }
-
-          // The subtitle only ever says WHERE the tree currently is, so it
-          // stays parallel with the "on" state instead of repeating the
-          // toggle's own "SET ME OUT" label straight back at you.
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            text: desktopToggle.on ? "out in your lower-right corner"
-                                   : "kept here in the bar"
-            color: Qt.alpha(root.fg, 0.45)
-            font.family: root.uiFont
-            font.pixelSize: root.capSize
-            font.italic: true
-            wrapMode: Text.Wrap
-            renderType: Text.QtRendering
           }
         }
 
