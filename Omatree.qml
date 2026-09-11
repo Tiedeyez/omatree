@@ -386,6 +386,23 @@ Item {
       palette: root.palette, time: root.animate ? root.phase : 0
     }
   }
+  // ---- one-shot snapshot export (for sibling plugins, e.g. Omagarden's
+  // "place omatree" tool) ------------------------------------------
+  // Synchronous: builds the draw list and bakes a transparent RGBA PNG
+  // straight from the current skeleton, independent of the imgA/imgB
+  // double-buffer and the frame pacer above. Always exports solidObject:true
+  // (a frozen garden ornament should read as solid wood/leaf, never the
+  // glass-case tint) regardless of this instance's own solidObject setting.
+  // Returns {} if there is no tree grown yet.
+  function exportSnapshotUrl() {
+    if (!root.skeleton) return {}
+    var v = root._view()
+    var dl = Paint.build(root.skeleton, v)
+    var bake = Raster.bakeRGBA(Paint, dl.staticOps, root.artW, root.artH, root.reveal, true)
+    var url = Raster.overPngUrl(Paint, dl.leafOps, root.artW, root.artH, bake, true, root.reveal)
+    return { url: url, w: root.artW, h: root.artH }
+  }
+
   // ---- render pacing --------------------------------------------
   // Paint.build + the BMP re-encode is ~15-25ms of main-thread JS. A drag or a
   // held arrow key can ask for far more frames than that budget allows, so the
