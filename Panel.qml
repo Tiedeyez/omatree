@@ -466,6 +466,7 @@ Panel {
               Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.ready ? root.treeService.treeName : "…"
+                textFormat: Text.PlainText
                 color: Qt.alpha(root.fg, 0.8)
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
@@ -476,6 +477,7 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.ready
                 text: root.ready ? root.treeService.genusLabel.toLowerCase() : ""
+                textFormat: Text.PlainText
                 color: Qt.alpha(root.fg, 0.4)
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
@@ -787,6 +789,7 @@ Panel {
                   spacing: 2
                   Text {
                     text: card.modelData.title
+                    textFormat: Text.PlainText
                     color: Qt.alpha(root.fg, 0.9)
                     font.family: root.uiFont
                     font.pixelSize: Style.font.bodySmall
@@ -795,6 +798,7 @@ Panel {
                   }
                   Text {
                     text: card.modelData.sub
+                    textFormat: Text.PlainText
                     color: Qt.alpha(root.fg, 0.5)
                     font.family: root.uiFont
                     font.pixelSize: root.capSize
@@ -850,6 +854,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             opacity: root.greetLine === "" ? 0 : 1
             text: root.greetLine
+            textFormat: Text.PlainText
             color: root.accent
             font.family: root.uiFont
             font.pixelSize: Style.font.body
@@ -888,6 +893,7 @@ Panel {
             }
             Text {
               text: root.flash
+              textFormat: Text.PlainText
               color: Qt.alpha(root.fg, 0.85)
               font.family: root.uiFont
               font.pixelSize: Style.font.body
@@ -904,6 +910,7 @@ Panel {
             ? (root.treeService.stageLabel + "   ·   " + root.treeService.genusLabel
                + "   ·   " + root.ageLabel).toUpperCase()
             : ""
+          textFormat: Text.PlainText
           color: Qt.alpha(root.fg, 0.45)
           font.family: root.uiFont
           font.pixelSize: root.capSize
@@ -1088,6 +1095,7 @@ Panel {
               ? "GRAFTS  ·  " + root.treeService.grafts + "/" + root.treeService.maxGrafts
                 + (root.treeService.grafts > 0 ? "   ·   " + root.treeService.genusLabel : "")
               : ""
+            textFormat: Text.PlainText
             color: Qt.alpha(root.fg, 0.55)
             font.family: root.uiFont
             font.pixelSize: Style.font.bodySmall
@@ -1545,16 +1553,41 @@ Panel {
           if (!item) return
           var path = item.filePath
           if (!path) return
-          graftPickFile.path = path
-          var raw = ""
-          try { raw = graftPickFile.text() || "" } catch (e) {}
-          var parsed = root.treeService.parseGraftFile(raw)
-          var preview = parsed ? root.treeService.previewGraft(parsed) : null
-          if (!preview) { pickError = "that file isn't a graft this version understands"; return }
           pickError = ""
-          pendingParsed = parsed
-          pendingPreview = preview
-          step = "preview"
+          graftBoundedRead.command = [
+            "python3", "-c",
+            "import os,sys\n"
+            + "p=sys.argv[1]\n"
+            + "try:\n"
+            + "  if os.path.islink(p) or not os.path.isfile(p):\n"
+            + "    sys.exit(1)\n"
+            + "  with open(p,'rb') as f:\n"
+            + "    sys.stdout.buffer.write(f.read(" + (root.treeService.maxGraftFileBytes + 1) + "))\n"
+            + "except OSError:\n"
+            + "  sys.exit(1)",
+            path
+          ]
+          graftBoundedRead.running = true
+        }
+
+        // Bounded read for the graft inbox: a symlink or non-regular file is
+        // refused outright, and at most maxGraftFileBytes+1 bytes are ever
+        // pulled into memory regardless of how large the file on disk is —
+        // the same cap Service.qml's parseGraftFile rejects on, just enforced
+        // before the bytes exist in this process instead of after.
+        Process {
+          id: graftBoundedRead
+          running: false
+          stdout: StdioCollector { id: graftBoundedOut; waitForEnd: true }
+          onExited: function(code) {
+            var raw = code === 0 ? (graftBoundedOut.text || "") : ""
+            var parsed = code === 0 ? root.treeService.parseGraftFile(raw) : null
+            var preview = parsed ? root.treeService.previewGraft(parsed) : null
+            if (!preview) { graftFlow.pickError = "that file isn't a graft this version understands"; return }
+            graftFlow.pendingParsed = parsed
+            graftFlow.pendingPreview = preview
+            graftFlow.step = "preview"
+          }
         }
 
         function confirmGraft() {
@@ -1669,6 +1702,7 @@ Panel {
                   spacing: Style.space(4)
                   Text {
                     text: card.modelData.title
+                    textFormat: Text.PlainText
                     color: root.accent
                     font.family: root.uiFont
                     font.pixelSize: root.capSize
@@ -1678,6 +1712,7 @@ Panel {
                   Text {
                     width: cardCol.width
                     text: card.modelData.sub
+                    textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: Qt.alpha(root.fg, 0.6)
                     font.family: root.uiFont
@@ -1822,6 +1857,7 @@ Panel {
                   id: fileText
                   anchors { left: parent.left; verticalCenter: parent.verticalCenter; margins: Style.space(10) }
                   text: fileRow.fileName
+                  textFormat: Text.PlainText
                   color: Qt.alpha(root.fg, 0.8)
                   font.family: root.uiFont
                   font.pixelSize: Style.font.bodySmall
@@ -1836,13 +1872,6 @@ Panel {
                   onClicked: graftFlow.pickFile(fileRow.index)
                 }
               }
-            }
-
-            FileView {
-              id: graftPickFile
-              path: ""
-              blockLoading: true
-              printErrors: false
             }
           }
 
@@ -1859,6 +1888,7 @@ Panel {
               text: (graftFlow.pendingPreview ? graftFlow.pendingPreview.genus : "")
                 + (graftFlow.pendingPreview && graftFlow.pendingPreview.treeName
                    ? "\nfrom " + graftFlow.pendingPreview.treeName : "")
+              textFormat: Text.PlainText
               color: root.accent
               font.family: root.uiFont
               font.pixelSize: root.capSize
