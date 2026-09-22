@@ -92,7 +92,7 @@ Item {
   property double plantedAtMs: 0
   property double lastSeenMs: 0
   property double lastActiveMs: 0
-  property int wallAgeDays: 0
+  property real wallAgeDays: 0
   property real activeAgeMinutes: 0
   property real maturity: 0        // 0..1 -> how grown the tree is
   property real careAverage: 100   // rolling care quality
@@ -547,10 +547,17 @@ Item {
     : null
 
   // --- ageing ---------------------------------------------------------------
-  // On the minute tick we fold one active minute in, and the daily tick folds
-  // wall age in. Growth is gentle: it follows the better-fed, calmer clock.
-  function accumulateAge(daysDelta) {
-    wallAgeDays = wallAgeDays + Math.max(0, Math.round(daysDelta))
+  // Active age folds in one minute per heartbeat; wall age is real calendar
+  // time since planting, recomputed from the planting timestamp rather than
+  // summed from per-tick gaps. That sum rounded every gap to a whole day and
+  // reset lastSeenMs hourly, so every gap under half a day (a night's sleep,
+  // a workday) added nothing and the counter lost most of the tree's actual
+  // age. Recomputed, it is exact, survives any number of off-hours, and
+  // self-heals whatever the old accumulation left in the save.
+  function refreshWallAge() {
+    wallAgeDays = plantedAtMs > 0
+      ? Math.max(0, Math.min(36525, (nowMs - plantedAtMs) / 86400000))
+      : 0
     checkFruit()
   }
 
@@ -951,16 +958,11 @@ Item {
     initialized = true
     if (fresh) flush()
 
-    // Wall age: the tree went on ageing while the box was off. Guard against
-    // clock jumps.
-    var elapsedDays = 0
-    if (lastSeenMs > 0) {
-      var delta = Math.abs(nowMs - lastSeenMs)
-      if (delta < 60 * 24 * 60 * 60 * 1000) // < 60 days
-        elapsedDays = delta / (24 * 60 * 60 * 1000)
-    }
-    root.accumulateAge(elapsedDays)
+    // Real wall age, recomputed from the planting timestamp: the tree keeps
+    // ageing while the box is off, and this self-heals any undercount the old
+    // gap-accumulation left in the save.
     root.nowMs = Date.now()
+    root.refreshWallAge()
     lastSeenMs = nowMs
 
     heartbeat.running = true
@@ -1008,12 +1010,10 @@ Item {
     repeat: true
     onTriggered: {
       root.nowMs = Date.now()
-      // Cross-calendar-day accounting: fold what truly elapsed since last
-      // heartbeat into the wall clock, then update lastSeen.
-      if (root.lastSeenMs > 0) {
-        var del = (root.nowMs - root.lastSeenMs) / 86400000
-        root.accumulateAge(Math.max(0, Math.min(del, 3)))
-      }
+      // Wall age is a function of the planting timestamp, so a daily pass
+      // only has to refresh it — it keeps ageing whether the box is on or
+      // off — keep the save's timestamps honest, and persist.
+      root.refreshWallAge()
       root.lastSeenMs = root.nowMs
       root.flush()
     }

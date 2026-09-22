@@ -4,6 +4,24 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.13 — 2026-09-22
+
+- **The age label tells one coherent clock.** The line used to read "3d 425h
+  31m" — wall-clock days from a lossy gap counter jammed against active-clock
+  hours, two clocks side by side. It now shows the tree's real calendar age
+  (days since planting, in d/h/m) as one number, the way a person would say
+  it: "21d 16h". The active clock still drives growth and maturity; it just
+  isn't smuggled into the age line anymore.
+- **Wall age is recomputed, not summed from gap roundings.** The old wall
+  counter added `round(elapsedDays)` on every hourly tick and reset its
+  reference timestamp each tick, so any gap under half a day — a night's
+  sleep, a workday — added 0 and the tree lost most of its real age (3 days
+  counted against ~22 real days since planting). Wall age is now a function
+  of the planting timestamp: exact, keeps ageing while the box is off, and
+  self-heals the undercount every machine that ran the old counter has saved.
+  Fruit gating, which unlocks by wall age, now happens at the honest day
+  count.
+
 ## 1.2.12 — 2026-09-10
 
 - **The picked pet lives WITH the tree, at its side.** Its place is the front

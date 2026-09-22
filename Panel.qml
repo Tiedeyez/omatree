@@ -1945,9 +1945,14 @@ Panel {
   readonly property string ageLabel: root.ready ? root.formatAge(root.treeService) : ""
 
   function formatAge(svc) {
-    var d = svc.wallAgeDays
-    var h = Math.floor(svc.activeAgeMinutes / 60)
-    var m = Math.floor(svc.activeAgeMinutes % 60)
+    // One clock, told honestly: the age is real calendar time since planting
+    // (wall age), shown in d/h/m. Days and hours come from the same source —
+    // never mix wall days with active hours, which read absurdly side by side
+    // ("3d 425h 31m").
+    var totalMinutes = Math.max(0, Math.round(svc.wallAgeDays * 1440))
+    var d = Math.floor(totalMinutes / 1440)
+    var h = Math.floor((totalMinutes % 1440) / 60)
+    var m = totalMinutes % 60
     var parts = []
     if (d > 0) parts.push(d + "d")
     if (h > 0 || d > 0) parts.push(h + "h")
