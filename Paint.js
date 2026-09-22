@@ -754,7 +754,13 @@ function build(sk, V) {
     for (var cf = 0; cf < cc.front.length; cf++) leafOps.push(cc.front[cf])
   }
 
-  return { staticOps: staticOps, leafOps: leafOps, hitAreas: hitAreas }
+  // Where a companion stands with the tree: the front-left quarter of the soil
+  // mound, in the moss, at the pot's near rim. A point for the feet, in art-px,
+  // on the same frame as hitAreas — it orbits with the pot as the tree turns.
+  var pm = project([pcx - potR * 0.62, pTopY + 0.18, pcz + potR * 0.62], V)
+
+  return { staticOps: staticOps, leafOps: leafOps, hitAreas: hitAreas,
+           potMoss: { x: pm.x, y: pm.y } }
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,21 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.12 — 2026-09-10
+
+- **The picked pet lives WITH the tree, at its side.** Its place is the front
+  of the pot itself: standing in the moss at the pot's near-left rim, right
+  where a friend would perch to keep it company — and drawn in front of
+  whatever the tree painted beneath it. The spot is the renderer's own
+  landmark (the projected soil geometry, not an invented offset), so the pet
+  sits the painted ground and turns with the pot as the tree is spun. If the
+  tree folds back into the bar, the pet is gone with it.
+- **It reacts to being tended.** Watering the desktop tree with the pet looking
+  on triggers a single happy hop before it settles again — its only way to
+  answer, since a Codex pet has no needs of its own to feed. The bar mark's
+  rim pet picks up the tree's breath too, swaying gently when the tree is doing
+  well.
+
 ## 1.2.11 — 2026-09-09
 
 - **The Omagotchi snapshot draws in the bar and panel for real.** The sprite

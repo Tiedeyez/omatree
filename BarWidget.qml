@@ -11,19 +11,29 @@ BarWidget {
   id: root
   moduleName: "tiedeyez.omatree"
 
+  // The bar mark asks its bar for the tree service. On the stock (trusted)
+  // bar the live service comes back and everything below is exact; on a
+  // replacement/custom bar the 4.0.4 host hands out a service-less facade
+  // (`bar.shell.serviceFor` → null), so TreeBridge rebuilds the same display
+  // surface from the plugin's own persisted state file. Write actions only
+  // work through the live service.
   readonly property var treeService: bar && bar.shell
-    ? bar.shell.serviceFor(moduleName)
-    : null
+    ? (bar.shell.serviceFor(moduleName) || treeSnap)
+    : treeSnap
   readonly property bool serviceReady: !!treeService && treeService.initialized === true
+  TreeBridge { id: treeSnap }
 
   // If a pet bar widget is installed, its creature comes to live in the tree:
   // it perches on the canopy here. With Omagotchi the panel also grows a place
   // to tend it; Omarchy Pets is visual only. Absent (the common case) none of
   // this renders and the mark is exactly as before.
   //
-  // Omagotchi: read only the pet's service — never its files, never its UI.
+  // Omagotchi: prefer the pet's live service; on hardened hosts cross-plugin
+  // `serviceFor` is refused on every bar, so PetBridge reads the pet's own
+  // state file instead (display only — feeding needs the live service).
   readonly property var petService: bar && bar.shell
-    ? bar.shell.serviceFor("slcode777.omagotchi") : null
+    ? (bar.shell.serviceFor("slcode777.omagotchi") || petSnap) : petSnap
+  PetBridge { id: petSnap }
   readonly property bool omagotchiHere: !!petService && petService.initialized === true
   readonly property string petMood: omagotchiHere ? petService.mood : ""
   readonly property string petDir: {
@@ -309,6 +319,10 @@ BarWidget {
         phase: root.phase
         x: parent.width * 0.5 + width * 0.22
         y: pot.y - height * 0.58
+        // a soft sway with the tree's own breath; tiny at this scale
+        rotation: root.thriving ? Math.sin(root.phase * 0.5) * 4 : 0
+        transformOrigin: Item.Bottom
+        Behavior on rotation { NumberAnimation { duration: 700; easing.type: Easing.InOutSine } }
       }
     }
   }

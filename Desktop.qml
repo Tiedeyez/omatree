@@ -207,10 +207,11 @@ PanelWindow {
       transform: Translate { y: root._travelY }
     }
 
-    // the Omarchy Pets squad, wherever the Omagotchi roamer is: its ground
-    // is the POT, not the leaves — the picked pet stands on the rim, and up
-    // to two companions keep to the saucer edges. Visual only, no clicks:
-    // the mask untouched, it rides the descent with the tree.
+    // the Omarchy Pets squad, wherever the Omagotchi roamer is: the picked pet
+    // stands up on the pot in the moss — the renderer's own landmark, so it
+    // sits the painted soil and turns with the pot — and up to two companions
+    // keep to the saucer edges. Visual only, no clicks: the mask untouched, it
+    // rides the descent with the tree.
     Creature {
       id: potLead
       visible: root.showTree && root.ready
@@ -223,9 +224,14 @@ PanelWindow {
       tint: Color.foreground
       accent: Color.accent
       phase: root.perchPhase
-      x: bed.width * 0.44 - width / 2 + Math.sin(root.perchPhase * 0.5) * 1.5
-      y: bed.height * 0.905 - height * 0.30
+      x: root._petSpotX(bed.width, potLead.width)
+      y: root._petSpotY(bed.height, potLead.height) + root.petHopY
       z: 3
+      // idle sway, so a seated pet stays alive without fighting the seat move
+      rotation: Math.sin(root.perchPhase * 0.5) * 3
+      transformOrigin: Item.Bottom
+      Behavior on x { NumberAnimation { duration: 750; easing.type: Easing.InOutCubic } }
+      Behavior on y { NumberAnimation { duration: 750; easing.type: Easing.InOutCubic } }
       transform: Translate { y: root._travelY }
     }
 
@@ -419,6 +425,57 @@ PanelWindow {
     onTriggered: root.perchPhase += 0.24
   }
 
+  // ---- the picked pet lives WITH the tree, not just on it --------------
+  // Its one place is the front of the pot itself: standing in the moss at the
+  // pot's near-left rim, right where a friend would perch to keep it company.
+  // The spot comes from the renderer's own landmark (painted soil geometry,
+  // not an invented offset), so it tracks the pot's real position and turns
+  // with it. Waist-high, drawn over everything the tree painted.
+  readonly property string petSeat: {
+    if (!root.ready || !root.showTree || root.treeService.codexHere !== true)
+      return "hidden"
+    return "moss"
+  }
+
+  // Bed fractions of the moss spot from Omatree's landmark. Null until the
+  // renderer has painted, so the pet starts "hidden"-shaped (x/y fall back)
+  // and seats itself the moment the first frame lands.
+  readonly property var _potMossFrac: {
+    var pm = (tree && tree.potMoss) ? tree.potMoss : null
+    if (!pm || !isFinite(pm.x) || !isFinite(pm.y)
+        || !isFinite(tree.artW) || tree.artW <= 0
+        || !isFinite(tree.artH) || tree.artH <= 0) return null
+    return { fx: pm.x / tree.artW, fy: pm.y / tree.artH }
+  }
+
+  // Bed-local perch. Fraction inputs (bed size, the creature's own size) are
+  // passed in from the binding, not read inside, so QML's dependency tracking
+  // still fires when the bed or the sprite resizes. The idle sway above is
+  // carried by rotation, not x/y, so the seat Behavior owns the motion.
+  function _petSpotX(bw, w) {
+    var f = root._potMossFrac
+    if (!f) return bw * 0.44 - w / 2
+    return bw * f.fx - w / 2
+  }
+function _petSpotY(bh, h) {
+    var f = root._potMossFrac
+    if (!f) return bh * 0.905 - h * 0.30
+    return bh * f.fy - h
+  }
+
+  // A single happy hop when the tree is watered with the pet looking on —
+  // its way of reacting to being tended, since a Codex pet has no needs of
+  // its own to animate. hopT sits at 1 when idle and undulates through 0.
+  property real hopT: 1
+  SequentialAnimation {
+    id: petHopAnim
+    running: false
+    NumberAnimation { target: root; property: "hopT"; to: 0; duration: 170; easing.type: Easing.OutQuad }
+    NumberAnimation { target: root; property: "hopT"; to: 1; duration: 430; easing.type: Easing.InQuad }
+  }
+  readonly property real petHopY:
+    root.hopT < 1 ? -Math.sin((1 - root.hopT) * Math.PI) * 16 : 0
+
   function publishCompanionBridge() {
     if (!root.ready || !isFinite(root.bedW) || !isFinite(root.bedH)) return
     // Tree back in the bar → publish an empty set so a stale perch doesn't
@@ -529,7 +586,12 @@ PanelWindow {
   function doDesktopAction(kind) {
     if (!root.ready || !root.showTree) return
     var svc = root.treeService
-    if (kind === "water") { svc.waterNow(); tree.water(); }
+    if (kind === "water") {
+      svc.waterNow(); tree.water()
+      // the seated Codex pet hops its gratitude — its only reaction, since it
+      // has no needs of its own to feed
+      if (svc.codexHere) root.petHopAnim.restart()
+    }
     // desktopPruning drives tree.pruneMode through its binding — assigning the
     // property here as well would break that binding and strand trim mode on.
     else if (kind === "trim") root.desktopPruning = true
