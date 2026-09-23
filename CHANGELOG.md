@@ -4,6 +4,38 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.14 — 2026-09-23
+
+- **The trunk stands inside its pot.** On a grown tree the flare and surface
+  roots could hang over the lip of the pot, on two-thirds of all trees. The
+  pot slides under a leaning crown so the tree doesn't topple, and that slide
+  ignored where the trunk stood, so a crown thrown one way carried the rim out
+  from under the foot. The foot now sets how far the pot may slide. If the
+  crown still needs more, the pot widens (never so far that the tree looks
+  squat) instead of leaving the trunk hanging. The dev sweep has a new `foot`
+  band to guard this: 0% out of band at every maturity and age, down from 67%.
+- **The roots and the trunk are one thing.** The roots started at the trunk's
+  centre and reached less far than its own radius. They never broke its
+  surface, so all that showed were stubs poking out under it. Each root now
+  leaves flush with the flare, runs out over the soil and dives in at the tip.
+  Roots are grown after the pot is fitted, so each one reaches as far as the
+  rim allows in its direction. They also start from where the trunk actually
+  comes out of the soil: a leaning trunk leans from below the soil line, so
+  roots grown from its buried base came up a hand's width away from it.
+- **A nebari, not a jar.** The trunk is widest at the soil line and eases into
+  the shaft above it. It used to swell into a belly, run straight up as a
+  cylinder and drop in one step at the first bough. The flare is no longer
+  clamped against a pot size that aging trees outgrow, which pinched old
+  trunks into an onion-shaped bulb on a thin neck. Each bough's girth now
+  leaves the trunk gradually, and the trunk is drawn in 16 segments
+  instead of 9.
+- **Old trunks stay in proportion.** Girth grew as age^0.62 on top of length,
+  so an 800-year trunk was wider than it was tall. It is now age^0.45, and a
+  trunk that is already stout flares less. Across every maturity and age
+  from sprout to 800 years, the sweep is at most 1.1% out of band, down from
+  as much as 11%.
+- `dev/shot.js --seed live` renders the tree on this desktop, grafts included.
+
 ## 1.2.13 — 2026-09-22
 
 - **The age label tells one coherent clock.** The line used to read "3d 425h

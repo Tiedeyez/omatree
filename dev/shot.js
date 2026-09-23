@@ -3,6 +3,7 @@
 //
 //   node dev/shot.js out.png --seed me --maturity 0.7 --yaw 0.6 --age 0 --hour 13
 //   node dev/shot.js grid.png --gallery 9
+//   node dev/shot.js live.png --seed live --maturity 1 --age 0.05   # this desktop's tree, grafts and all
 //
 // Same modules + palette as dev/timelapse.js. Writes a PPM to imagemagick.
 
@@ -49,6 +50,15 @@ function identity () {
 }
 function genFor (arg) {
   if (arg === 'me') { const [m, u] = identity(); return P.TreeGen.genesis(m, u) }
+  // 'live': the tree actually on this desktop — identity replayed through the
+  // graft lineage on file, the same way Service.qml's _rebuildGenesis does
+  if (arg === 'live') {
+    const [m, u] = identity()
+    let g = P.TreeGen.genesis(m, u), lineage = []
+    try { lineage = JSON.parse(FS.readFileSync(os.homedir() + '/.local/state/omarchy/omatree-state.json', 'utf8')).graftLineage || [] } catch (e) {}
+    for (const graft of lineage.slice(0, 3)) { const d = P.TreeGen.importGraft(graft); if (d) g = P.TreeGen.fuse(g, d, undefined) }
+    return g
+  }
   const s = arg != null && !isNaN(+arg) ? (+arg >>> 0) : 777
   return P.TreeGen.genesis('seed:' + s, 'seed:' + s)
 }

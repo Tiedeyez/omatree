@@ -47,6 +47,13 @@ const spreadHi = (st) => SPREAD_HI_BY_STYLE[st] || SPREAD_HI
 const HEIGHT_LO = 1.30   // tree height / pot width
 const HEIGHT_HI = 3.20
 const BAL_HI    = 0.85   // canopy midpoint must stay well inside the rim
+// The trunk foot — flare, nebari, surface roots — must stand INSIDE the rim.
+// Everything above only measured the crown, so a box slid under a thrown crown
+// could leave the foot hanging over the far lip and pass every band. Measured
+// on the lower part of the trunk (where it reads against the pot, not the sky)
+// per axis of the square box, as a fraction of the half-width; <1 leaves a lip.
+const FOOT_HI   = 0.92
+const FOOT_BAND = 0.40   // how far up the trunk still reads as "the foot"
 
 // The LOW bands describe a grown tree. A sapling legitimately sits small in a
 // full-size training pot — that is what a fresh planting looks like, and the pot
@@ -77,6 +84,18 @@ function measure (seed) {
     Math.abs(b.min[0] - pcx), Math.abs(b.max[0] - pcx),
     Math.abs(b.min[2] - pcz), Math.abs(b.max[2] - pcz))
   const treeH = b.max[1]                       // soil is y=0-ish; top of foliage
+  const footTop = Math.max(2, sk.trunkTop[1] * FOOT_BAND)
+  let footR = 0
+  let rising = true
+  for (const n of sk.nodes) {
+    if (n.kind !== 'trunk' && n.kind !== 'root') continue
+    if (n.kind === 'trunk' && n.b[1] < n.a[1]) rising = false   // a cascade's descent hangs past the rim by design
+    if (n.kind === 'trunk' && !rising) continue
+    for (const [pt, r] of [[n.a, n.ra], [n.b, n.rb]]) {
+      if (pt[1] < -0.5 || pt[1] > footTop) continue   // buried in the pot, or up in the shaft
+      footR = Math.max(footR, Math.abs(pt[0] - pcx) + r, Math.abs(pt[2] - pcz) + r)
+    }
+  }
   return {
     seed,
     style: sk.style,
@@ -91,7 +110,8 @@ function measure (seed) {
     // makes a tree read as toppling rather than as leaning.
     balance: Math.max(
       Math.abs((b.min[0] + b.max[0]) / 2 - pcx),
-      Math.abs((b.min[2] + b.max[2]) / 2 - pcz)) / potR
+      Math.abs((b.min[2] + b.max[2]) / 2 - pcz)) / potR,
+    foot: footR / potR                         // trunk foot vs the rim; past 1 it hangs off the lip
   }
 }
 
@@ -103,7 +123,8 @@ function score (r) {
   const h = r.height < hLo ? hLo - r.height
     : r.height > HEIGHT_HI ? r.height - HEIGHT_HI : 0
   const b = r.balance > BAL_HI ? r.balance - BAL_HI : 0
-  return s + h + b
+  const ft = r.foot > FOOT_HI ? r.foot - FOOT_HI : 0
+  return s + h + b + ft
 }
 
 function pct (arr, p) {
@@ -129,7 +150,8 @@ const heights = rows.map(r => r.height)
 const stats = [
   stat('spread  (canopy/pot)', spreads, sLo, SPREAD_HI),   // headline uses the strict ceiling
   stat('height  (tree/potW)', heights, hLo, HEIGHT_HI),
-  stat('balance (offset/pot)', rows.map(r => r.balance), -1e9, BAL_HI)
+  stat('balance (offset/pot)', rows.map(r => r.balance), -1e9, BAL_HI),
+  stat('foot    (trunk/rim)', rows.map(r => r.foot), -1e9, FOOT_HI)
 ]
 
 function f (v) { return (v).toFixed(2).padStart(7) }
@@ -160,9 +182,9 @@ if (JSONOUT) { FS.writeFileSync(JSONOUT, JSON.stringify(scored, null, 1)); conso
 if (WORST > 0) {
   const worst = scored.slice().sort((a, b) => b.bad - a.bad).slice(0, WORST)
   console.log(`\n  worst ${WORST}:`)
-  console.log('    seed      style       genus     spread  height')
+  console.log('    seed      style       genus     spread  height   foot')
   for (const r of worst) {
-    console.log(`    ${String(r.seed).padEnd(9)} ${r.style.padEnd(11)} ${r.genus.padEnd(9)} ${f(r.spread)}${f(r.height)}`)
+    console.log(`    ${String(r.seed).padEnd(9)} ${r.style.padEnd(11)} ${r.genus.padEnd(9)} ${f(r.spread)}${f(r.height)}${f(r.foot)}`)
   }
   if (SHOTS) {
     FS.mkdirSync(SHOTS, { recursive: true })

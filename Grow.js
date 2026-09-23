@@ -30,7 +30,7 @@ var TRUNK_H_GROW = 19       // + this much at maturity 1  (tree: short + stout)
 var TRUNK_R_BASE = 2.6
 var TRUNK_R_GROW = 3.6
 var TRUNK_BURY   = 11       // how far the trunk foot sits below the soil line
-var TRUNK_SEGS   = 9
+var TRUNK_SEGS   = 16       // dense enough that the nebari and each bough's girth step read as curves
 var MAX_DEPTH    = { formal: 4, informal: 5, slant: 4, cascade: 5,
                      windswept: 4, literati: 4, broom: 4, twin: 4 }
 var CHILD_LEN    = 0.68     // child branch length as fraction of parent
@@ -46,6 +46,10 @@ var PIPE_LEAK    = 0.94     // a little area lost to bark/heartwood at each fork
 // the trunk turning a corner, nearly as thick as what it leaves, with a wide
 // smooth crotch. A big share here is what buys that: the bough comes out fat
 // and the trunk above it visibly loses the wood it gave away.
+var FLARE_GAIN   = 0.55     // nebari: how much wider than the shaft the trunk is at the soil
+var FLARE_STOUT_LO = 0.20   // shaft radius / trunk height where the flare starts to give way...
+var FLARE_STOUT_HI = 0.34   // ...and where it is gone
+var FLARE_DECAY  = 0.30     // ...and how fast that dies away, as a fraction of the flare span
 var BOUGH_SHARE  = 0.34     // fraction of trunk area a single main bough takes
 var LIMB_TAPER   = 0.34     // girth a limb loses along its OWN length
 var COLLAR       = 1.38     // branch-collar swelling where a limb leaves its parent
@@ -135,7 +139,7 @@ function grow(gen, state) {
   // have to stay inside the rim — a root that reaches past the terracotta
   // floats in mid-air once the box turns. Paint reads it back off `sk.potR`.
   var potR = potRadiusFor(style, m, ageScalar)
-  var girth = Math.pow(ageScalar, 0.62)              // trunk thickens faster than it lengthens
+  var girth = Math.pow(ageScalar, 0.45)              // trunk thickens faster than it lengthens — but at ^0.62 an 800-year trunk was wider than it was tall
   var ringCount = 1 + Math.floor(Math.min(1200, ageYears) / 3)
 
   // Where the main boughs leave the trunk has to be known BEFORE the trunk is
@@ -147,11 +151,16 @@ function grow(gen, state) {
   var boughTs = []
   for (var bt = 0; bt < boughCount; bt++)
     boughTs.push(boughStart + (0.98 - boughStart) * (boughCount === 1 ? 0.5 : bt / (boughCount - 1)))
-  // area still running up the trunk above height t
+  // area still running up the trunk above height t. The wood a bough takes
+  // leaves over a short run just above it, not at a single sample: a hard step
+  // painted as a shoulder, so the trunk below the first bough read as a jar.
+  var PIPE_EASE = 0.08
   function trunkPipe(t) {
     var area = 1
-    for (var q = 0; q < boughTs.length; q++)
-      if (t > boughTs[q]) area *= (1 - BOUGH_SHARE)
+    for (var q = 0; q < boughTs.length; q++) {
+      var e = clamp((t - boughTs[q]) / PIPE_EASE, 0, 1)
+      area *= 1 - BOUGH_SHARE * e * e * (3 - 2 * e)
+    }
     return Math.sqrt(area)
   }
 
@@ -173,6 +182,15 @@ function grow(gen, state) {
 
   var nodes = []
   var clumps = []
+  // the trunk foot's footprint in plan — flare, nebari, surface roots. fitPot
+  // has to keep this inside the rim wherever it slides the box.
+  var foot = { min: [1e9, 1e9], max: [-1e9, -1e9] }
+  function footAt(p, r) {
+    if (p[0] - r < foot.min[0]) foot.min[0] = p[0] - r
+    if (p[0] + r > foot.max[0]) foot.max[0] = p[0] + r
+    if (p[2] - r < foot.min[1]) foot.min[1] = p[2] - r
+    if (p[2] + r > foot.max[1]) foot.max[1] = p[2] + r
+  }
   var clumpN = 0
   var min = [1e9, 1e9, 1e9], max = [-1e9, -1e9, -1e9]
 
@@ -202,6 +220,14 @@ function grow(gen, state) {
   var ph = trnd() * TAU
 
   var trunkPts = []      // { p:[x,y,z], r, dir:[x,y,z] }
+  // how much the nebari adds at the soil line, over the bare shaft there
+  var tSoil = style === "cascade" ? 0 : TRUNK_BURY / (trunkH + TRUNK_BURY)
+  var shaftSoil = trunkR * (1 - 0.48 * tSoil) * trunkPipe(tSoil)
+  // A trunk that is already stout for its height does not flare much further:
+  // an old, fat foot with the full nebari on top swelled into a dome wider
+  // than any pot could hold. Full flare on a slender trunk, none on a sumo one.
+  var stout = clamp((shaftSoil / trunkH - FLARE_STOUT_LO) / (FLARE_STOUT_HI - FLARE_STOUT_LO), 0, 1)
+  var flareExcess = shaftSoil * FLARE_GAIN * (1 - stout)
   for (var i = 0; i <= TRUNK_SEGS; i++) {
     var t = i / TRUNK_SEGS
     var y = t * (trunkH + TRUNK_BURY) - TRUNK_BURY     // foot buried below the soil
@@ -237,24 +263,21 @@ function grow(gen, state) {
     var ox = off[0] * Math.cos(sp) - off[2] * Math.sin(sp)
     var oz = off[0] * Math.sin(sp) + off[2] * Math.cos(sp)
     var p = [ox, y, oz]
-    // basal flare / nebari — the trunk swells to a peak right at the soil line
-    // (y≈0) and eases off above it, so it reads as rooted rather than propped.
-    // Keyed to world height, not t (TRUNK_BURY puts t≈0.45 at the soil).
-    // The trunk does not meet the ground, it SPREADS into it — but it is a
-    // shaft with a flared foot, not a cone. Keyed to trunk height so the
-    // spread always occupies the lower third and the shaft above stays a
-    // shaft, whatever size the tree has grown to.
+    // basal flare / nebari — the trunk is widest right at the soil line and
+    // eases into the shaft above it, a concave curve like a real nebari
+    // rather than a belly. It is added ON TOP of the shaft, so the shaft's own
+    // taper is never undone, and it dies away within the lower part of the
+    // trunk, whatever size the tree has grown to.
+    var shaft = trunkR * (1 - 0.48 * t) * trunkPipe(t)
     var flareSpan = trunkH * 0.34
-    var flare = 1 + 0.78 * clamp((flareSpan - Math.abs(y - 1)) / (flareSpan * 1.5), 0, 1)
+    var r = shaft + flareExcess * (y > 0 ? Math.exp(-y / (flareSpan * FLARE_DECAY)) : 1)
     // and tuck the BURIED foot back in — otherwise a big old trunk paints a
     // giant hidden disc that spills out past the pot.
-    var buriedTuck = y < 0 ? clamp((y + TRUNK_BURY) / TRUNK_BURY + 0.3, 0.32, 1) : 1
-    // The trunk's own slow taper is gentle now — most of the narrowing comes
-    // from the wood that leaves at each bough.
-    var r = trunkR * (1 - 0.48 * t) * trunkPipe(t) * flare * buriedTuck
-    // ...but the spread has to stay inside its own pot. A flare wider than the
-    // rim reads as a tree sitting ON the pot rather than growing out of it.
-    if (y < flareSpan * 1.5) r = Math.min(r, potR * 0.66)
+    if (y < 0) r *= clamp((y + TRUNK_BURY) / TRUNK_BURY + 0.3, 0.32, 1)
+    // the foot is what stands in the soil: above the buried tuck, below the
+    // top of the flare, and never a cascade's descending run, which hangs past
+    // the rim on purpose
+    if (y >= -0.5 && y < flareSpan * 1.5 && !(style === "cascade" && t >= 0.4)) footAt(p, r)
     trunkPts.push({ p: p, r: r })
   }
   for (var s = 0; s < trunkPts.length; s++) {
@@ -265,49 +288,6 @@ function grow(gen, state) {
       : norm(sub(trunkPts[s].p, trunkPts[s - 1].p))
   }
   var trunkTop = trunkPts[trunkPts.length - 1].p
-
-  // ---- surface roots: short buttresses splaying from the foot into the soil,
-  // so the trunk and the pot read as one planted thing
-  if ((state.origin === "seed" || state.origin === "cutting") && m > 0.06) {
-    var rootRng = rngFor(seed, "roots")
-    var nRoots = 3 + Math.floor(rootRng() * 2)          // 3..4, but each one big
-    var footX = trunkPts[0].p[0], footZ = trunkPts[0].p[2]
-    // The girth the buttresses are carved out of is the trunk's own flare at
-    // the soil line — a root is the flare continuing, not a stick leaning on
-    // it, so it starts inside the trunk's silhouette and at the flare's radius.
-    var flareR = 0
-    for (var fp = 0; fp < trunkPts.length; fp++)
-      if (trunkPts[fp].p[1] >= 0.2 && trunkPts[fp].p[1] <= 3.0)
-        flareR = Math.max(flareR, trunkPts[fp].r)
-    if (flareR <= 0) flareR = trunkR
-    var rootR = Math.min(flareR * 0.55, 7.0)
-    for (var ri = 0; ri < nRoots; ri++) {
-      var ra0 = (ri / nRoots) * TAU + (rootRng() - 0.5) * 1.5
-      // splay, but never past the soil surface: the rim is the hard stop
-      var rlen = Math.min(flareR * (1.1 + rootRng() * 1.0), potR * 0.50)
-      var rdx = Math.cos(ra0), rdz = Math.sin(ra0)
-      // Three segments along a curve that leaves the trunk almost vertically,
-      // rolls over the shoulder of the flare and dives into the soil: the
-      // shape a buttress root actually makes, and it keeps the join tangent to
-      // the trunk instead of cutting across it.
-      var yTop = 2.3 + rootRng() * 0.9
-      // A surface root rides PROUD of the soil for most of its run — that
-      // ridge is the nebari, and it is the thing you are meant to look at —
-      // and only slips under right at the tip.
-      var arc = [
-        [footX, yTop, footZ],
-        [footX + rdx * rlen * 0.34, yTop * 0.74, footZ + rdz * rlen * 0.34],
-        [footX + rdx * rlen * 0.78, 1.15 + rootRng() * 0.45, footZ + rdz * rlen * 0.78],
-        // The tip finishes just under the soil line: a surface root shows its
-        // shoulder for most of its run and then slips into the ground, rather
-        // than lying on top of it or stopping dead at the surface.
-        [footX + rdx * rlen, -0.55 - rootRng() * 0.4, footZ + rdz * rlen]
-      ]
-      var rads = [rootR, rootR * 0.78, rootR * 0.46, rootR * 0.12]
-      for (var rk = 0; rk < 3; rk++)
-        seg("root" + ri, arc[rk], arc[rk + 1], rads[rk], rads[rk + 1], 0, "root")
-    }
-  }
 
   // ---- germination: a buried seed / first sprout, no branches ----------
   var origin = state.origin || ""
@@ -447,9 +427,75 @@ function grow(gen, state) {
 
   return finish()
 
+  // ---- surface roots: short buttresses splaying from the foot into the soil,
+  // so the trunk and the pot read as one planted thing. Grown LAST, into the
+  // pot already fitted to the trunk and crown: each root runs out as far as
+  // the rim allows in its own direction. Sized before the pot existed, they
+  // either stopped short inside the flare or, reaching past it, widened the
+  // foot until the box could no longer slide under a thrown crown.
+  function growRoots(pot) {
+    if (!((state.origin === "seed" || state.origin === "cutting") && m > 0.06)) return
+    var rootRng = rngFor(seed, "roots")
+    var nRoots = 3 + Math.floor(rootRng() * 2)          // 3..4, but each one big
+    // Radiate from where the trunk actually crosses the soil, not from its
+    // buried base: a leaning style starts leaning underground, and roots grown
+    // from the base came out of the soil a hand's width from the trunk.
+    var footX = trunkPts[0].p[0], footZ = trunkPts[0].p[2]
+    for (var fs = 1; fs < trunkPts.length; fs++) {
+      var pa = trunkPts[fs - 1].p, pb = trunkPts[fs].p
+      if (pa[1] <= 0 && pb[1] > 0) {
+        var fu = -pa[1] / (pb[1] - pa[1])
+        footX = pa[0] + (pb[0] - pa[0]) * fu
+        footZ = pa[2] + (pb[2] - pa[2]) * fu
+        break
+      }
+    }
+    var flareR = shaftSoil + flareExcess                          // the trunk at y=0
+    // A root is the flare carrying on into the soil: it leaves from INSIDE
+    // the trunk with its outer edge flush to the flare, clears the trunk's
+    // surface and only then thins and dives. Starting at the axis and
+    // reaching less than the flare's own radius buried every root in the
+    // trunk, so all that showed were stubs poking out under it.
+    for (var ri = 0; ri < nRoots; ri++) {
+      var ra0 = (ri / nRoots) * TAU + (rootRng() - 0.5) * 1.5
+      var rootR = flareR * (0.42 + rootRng() * 0.10)       // scales with the trunk; the rim clip bounds it
+      var yTop = 1.6 + rootRng() * 0.8
+      var rlen = flareR * (1.6 + rootRng() * 0.5)
+      var y2 = 0.75 + rootRng() * 0.35, y3 = -0.55 - rootRng() * 0.4   // drawn up front: a skipped root must not reshuffle the rest
+      var rdx = Math.cos(ra0), rdz = Math.sin(ra0)
+      // how far along this heading a disc of radius r can sit and stay inside
+      // the lip of the square box
+      var lip = pot.r * POT_FOOT_LIP
+      function room(r) {
+        return Math.min(
+          rdx > 1e-6 ? (pot.cx + lip - r - footX) / rdx : rdx < -1e-6 ? (pot.cx - lip + r - footX) / rdx : 1e9,
+          rdz > 1e-6 ? (pot.cz + lip - r - footZ) / rdz : rdz < -1e-6 ? (pot.cz - lip + r - footZ) / rdz : 1e9)
+      }
+      // its thickest proud point (0.84 of the run, 0.3 of its girth) stays inside
+      rlen = Math.min(rlen, room(rootR * 0.30) / 0.84)
+      // heading straight at a near lip with no room to clear the flare: a
+      // root that cannot show is not grown
+      var d0 = Math.max(0, flareR - rootR)            // outer edge on the flare's surface
+      if (rlen < flareR * 1.05 || room(rootR) < d0) continue
+      var d1 = Math.min(flareR, rlen * 0.70, room(rootR * 0.60))
+      // Proud of the soil for most of its run — that ridge is the nebari —
+      // and only slipping under right at the tip.
+      var arc = [
+        [footX + rdx * d0, yTop, footZ + rdz * d0],
+        [footX + rdx * d1, yTop * 0.72, footZ + rdz * d1],
+        [footX + rdx * rlen * 0.84, y2, footZ + rdz * rlen * 0.84],
+        [footX + rdx * rlen, y3, footZ + rdz * rlen]
+      ]
+      var rads = [rootR, rootR * 0.60, rootR * 0.30, rootR * 0.08]
+      for (var rk = 0; rk < 3; rk++)
+        seg("root" + ri, arc[rk], arc[rk + 1], rads[rk], rads[rk + 1], 0, "root")
+    }
+  }
+
   function finish() {
     if (min[0] > max[0]) { min = [-4, 0, -4]; max = [4, 6, 4] }
-    var pot = fitPot(potR, min, max, style)
+    var pot = fitPot(potR, min, max, style, foot)
+    growRoots(pot)
     // Split on "+" rather than an exact match so a grafted hybrid
     // (genus "juniper+willow") still reads as needled/weeping whenever any
     // ancestor genus in the label is — an exact-equals check would silently
@@ -519,9 +565,17 @@ var POT_SHIFT_LIMIT = 0.52     // how far off-centre the trunk may sit, as a fra
 var POT_MIN_SHRINK = 0.70      // surface roots reach potR*0.66; never strand them outside the rim
 var POT_MIN_DEPTH = 13.5       // must clear TRUNK_BURY (11) or the trunk foot pokes through the floor
 var POT_DEPTH_RATIO = 0.68     // depth as a fraction of the pot's full width
+// The box slid under the crown with no idea where the trunk stood in it, so a
+// crown thrown one way carried the rim out from under the foot and the flare
+// hung over the far lip (dev/sweep.js foot band: 67% of grown seeds at or past
+// the rim). The foot now bounds the slide: the crown gets whatever shift is left
+// once the flare and roots are inside, and if they cannot fit even centred, the
+// rim widens rather than the foot hanging off it.
+var POT_MIN_SPREAD = 1.15      // widening for the foot stops before the crown shrinks inside the rim
+var POT_FOOT_LIP = 0.86        // the foot's outer edge stays inside this fraction of the rim
 var POT_WIDE_OVER_DEEP = 1.45  // a training pot is always wider than it is deep
 
-function fitPot(potR, min, max, style) {
+function fitPot(potR, min, max, style, foot) {
   var treeH = max[1]
   var cx = (min[0] + max[0]) / 2
   var cz = (min[2] + max[2]) / 2
@@ -552,14 +606,44 @@ function fitPot(potR, min, max, style) {
     var d = potDepthFor(r, deep)
     r = Math.max(r, d * POT_WIDE_OVER_DEEP / 2)
   }
+  var hasFoot = foot && foot.max[0] >= foot.min[0]
+  if (hasFoot) {
+    var footHalf = Math.max(foot.max[0] - foot.min[0], foot.max[1] - foot.min[1]) / 2
+    r = Math.max(r, footHalf / POT_FOOT_LIP)
+  }
   var lim = r * POT_SHIFT_LIMIT
-  return { r: r, depth: potDepthFor(r, deep), cx: clamp(cx, -lim, lim), cz: clamp(cz, -lim, lim) }
+  cx = clamp(cx, -lim, lim)
+  cz = clamp(cz, -lim, lim)
+  if (hasFoot) {
+    // Rather than refuse the crown its shift, widen the box to carry both —
+    // but never so wide the tree looks squat, nor so wide the crown no longer
+    // clears the rim; past either ceiling the shift gives instead.
+    var need = Math.max(foot.max[0] - cx, cx - foot.min[0],
+                        foot.max[1] - cz, cz - foot.min[1]) / POT_FOOT_LIP
+    if (need > r) {
+      r = Math.max(r, Math.min(need, hi, reach / POT_MIN_SPREAD))
+      if (!deep) r = Math.max(r, potDepthFor(r, deep) * POT_WIDE_OVER_DEEP / 2)
+    }
+    var lip = r * POT_FOOT_LIP
+    cx = clamp(cx, foot.max[0] - lip, foot.min[0] + lip)
+    cz = clamp(cz, foot.max[1] - lip, foot.min[1] + lip)
+  }
+  return { r: r, depth: potDepthFor(r, deep), cx: cx, cz: cz }
 }
 
 // Depth of the box, from its width. Never shallower than the buried trunk foot
 // (TRUNK_BURY) or the foot pokes out through the floor.
 function potDepthFor(r, deep) {
   return Math.max(POT_MIN_DEPTH, 2 * r * (deep ? 1.30 : POT_DEPTH_RATIO))
+}
+
+// A smooth ceiling: identity well below cap, bending over to approach it.
+// Unlike min() it has no corner, so a clamped profile keeps its curve.
+function softCap(r, cap) {
+  var knee = cap * 0.7
+  if (r <= knee) return r
+  var span = cap - knee
+  return knee + span * Math.tanh((r - knee) / span)
 }
 
 // sample the trunk polyline at fraction t (0 base .. 1 top)
