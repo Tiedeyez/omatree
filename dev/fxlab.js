@@ -64,7 +64,8 @@ if (scene.w !== BW || scene.h !== BH) console.error(`warning: scene ${scene.w}x$
 // dark-theme tones, as Omatree.qml maps them
 const TONE = {
   water: [143, 199, 255], waterHi: [232, 246, 255], splash: [168, 216, 255],
-  wet: [0, 0, 0], glint: [255, 243, 201], gold: [255, 217, 138], star: [255, 255, 255]
+  wet: [0, 0, 0], glint: [255, 243, 201], gold: [255, 217, 138], star: [255, 255, 255],
+  pellet: [190, 150, 104], pelletHi: [236, 212, 164], nutrient: [120, 240, 160], nutrientHi: [226, 255, 232], flush: [150, 255, 170]
 }
 
 function mulberry (a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296 } }
@@ -129,10 +130,43 @@ function legacyLight (rng) {
   }
 }
 
+function legacyFeed (rng) {
+  const H = BH, W = BW, s = 0.5, soil = H * 0.76
+  const grains = [], glints = []
+  for (let i = 0; i < 12; i++) grains.push({ x: W * (0.33 + 0.34 * rng()), y0: soil - (30 + rng() * 18) * s, y1: soil + rng() * 6 * s, t0: i * 0.038 })
+  for (let j = 0; j < 14; j++) {
+    const x = W * (0.4 + 0.2 * rng())
+    glints.push({ x, y: soil, tx: x + (rng() - 0.5) * 28 * s, ty: soil - H * (0.34 + 0.26 * rng()), t0: 0.34 + j * 0.066 })
+  }
+  return {
+    t: 0,
+    alive () { return this.t < 2.4 },
+    step (dt) { this.t += dt },
+    prims () {
+      const out = []
+      for (const g of grains) {
+        const u = this.t - g.t0
+        if (u < 0 || u > 0.73) continue
+        const y = u < 0.3 ? g.y0 + (g.y1 - g.y0) * (u / 0.3) ** 2 : g.y1
+        const a = u < 0.12 ? u / 0.12 * 0.95 : u < 0.3 ? 0.95 : 0.95 * (1 - ((u - 0.3) / 0.43) ** 2)
+        out.push({ x: Math.floor(g.x), y: Math.floor(y), w: 1, h: 1, c: 'pellet', a })
+      }
+      for (const g of glints) {
+        const u = (this.t - g.t0) / 1.15
+        if (u < 0 || u > 1) continue
+        const e = 1 - (1 - u) * (1 - u), a = u < 0.19 ? u / 0.19 : u < 0.63 ? 1 : 1 - ((u - 0.63) / 0.37) ** 2
+        out.push({ x: Math.floor(g.x + (g.tx - g.x) * u), y: Math.floor(g.y + (g.ty - g.y) * e), w: 1, h: 1, c: 'nutrient', a: 0.95 * a })
+      }
+      return out
+    }
+  }
+}
+
 function fxSim (opts, kind) {
   return (rng) => {
-    const sim = P.Fx.create(scene, { rng, water: opts.water, light: opts.light })
+    const sim = P.Fx.create(scene, { rng, water: opts.water, light: opts.light, feed: opts.feed })
     if (kind === 'water') P.Fx.water(sim)
+    else if (kind === 'feed') P.Fx.feed(sim, P.Paint.veins(sk, V))
     else P.Fx.light(sim, opts.ambient === true)
     return {
       sim,
@@ -153,6 +187,13 @@ const VARIANTS = {
     W6: { note: 'shower full, slow', make: fxSim({ water: { g: 3, vT: 1.1 } }, 'water') },
     W7: { note: 'shower full, heavy pour (72)', make: fxSim({ water: { count: 72, span: 1.15 } }, 'water') }
   },
+  feed: {
+    F0: { note: 'today: grains fade, motes rise in a box', make: legacyFeed },
+    F1: { note: 'pellets bounce, dissolve, sap-path uptake', make: fxSim({}, 'feed') },
+    F2: { note: 'F1, three motes a pellet', make: fxSim({ feed: { motes: 3 } }, 'feed') },
+    F3: { note: 'F1, slower climb (1.6-2.1 s)', make: fxSim({ feed: { climb: [1.6, 2.1] } }, 'feed') },
+    F4: { note: 'F1, fewer bigger pellets (8)', make: fxSim({ feed: { pellets: 8, motes: 3 } }, 'feed') }
+  },
   light: {
     L0: { note: 'today: 12 motes, three even winks', make: legacyLight },
     L1: { note: 'sparks only, new twinkle', make: fxSim({ light: { flakes: 0 } }, 'light') },
@@ -172,6 +213,7 @@ function composite (prims, base) {
       if (y < 0 || y >= BH) continue
       for (let x = p.x; x < p.x + p.w; x++) {
         if (x < 0 || x >= BW) continue
+        if (p.o) { const u = (x + 0.5 - p.x - p.w / 2) / (p.w / 2), v = (y + 0.5 - p.y - p.h / 2) / (p.h / 2); if (u * u + v * v > 1) continue }
         const i = (y * BW + x) * 3
         f[i] = f[i] * (1 - a) + col[0] * a; f[i + 1] = f[i + 1] * (1 - a) + col[1] * a; f[i + 2] = f[i + 2] * (1 - a) + col[2] * a
       }
@@ -235,5 +277,6 @@ for (const name of Object.keys(list)) {
   const st = eff.sim ? eff.sim.stats : null
   console.log(`${name}  ${v.note.padEnd(44)} ${t.toFixed(2)}s  rects ${String(peak).padStart(3)}  parts ${String(peakParts).padStart(3)}` +
     `  ${SET === 'water' ? 'visible' : 'lit'} ${(visSum / Math.max(1, visN)).toFixed(1).padStart(4)}` +
-    (st && SET === 'water' ? `  landed ${st.landed} caught ${st.caught} dripped ${st.dripped} lost ${st.lost}` : ''))
+    (st && SET === 'water' ? `  landed ${st.landed} caught ${st.caught} dripped ${st.dripped} lost ${st.lost}` : '') +
+    (st && SET === 'feed' ? `  motes ${st.motes} arrived ${st.arrived}` : ''))
 }

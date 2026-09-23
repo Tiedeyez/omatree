@@ -168,6 +168,9 @@ Item {
   // a drop has fallen, read as the water being beside the point. -1 = no hold.
   property real _thirstHold: -1
   property real _shownThirst: 0
+  // ...and the same for food: the crown greens when the nutrients reach it.
+  property real _healthHold: -1
+  property real _shownHealth: 1
 
   onTreeChanged: root.rebuild()
   onInHousingChanged: root.rebuild()
@@ -181,6 +184,9 @@ Item {
     var t = root.tree
     var thirstShown = root._thirstHold >= 0 ? root._thirstHold : (t.thirst || 0)
     root._shownThirst = thirstShown
+    var healthNow = (t.health === 0 || t.health > 0) ? t.health : 1
+    var healthShown = root._healthHold >= 0 ? root._healthHold : healthNow
+    root._shownHealth = healthShown
     if (t.gen) root.gen = t.gen
     else if (!root.gen || root.gen.seed !== t.seed)
       root.gen = TreeGen.genesis("seed:" + t.seed, "seed:" + t.seed)
@@ -195,7 +201,7 @@ Item {
 
     var key = [t.seed, root.gen.style, root._bucket(t.maturity, 0.015),
       root._bucket(t.ageYears || 0, 0.15), root._bucket(thirstShown, 0.12),
-      root._bucket(t.health, 0.12), t.origin || "", JSON.stringify(t.prune || {})].join("|")
+      root._bucket(healthShown, 0.12), t.origin || "", JSON.stringify(t.prune || {})].join("|")
     key += "|" + (t.fruit === true ? "fruit" : "no-fruit")
     key += "|b" + (t.berries || 0)
     // A graft changes root.gen.genus/model in place (TreeGen.fuse()) without
@@ -213,7 +219,7 @@ Item {
       root._builtKey = key
       root.skeleton = Grow.grow(root.gen, {
         maturity: t.maturity || 0, ageYears: t.ageYears || 0,
-        thirst: thirstShown, health: (t.health === 0 || t.health > 0) ? t.health : 1,
+        thirst: thirstShown, health: healthShown,
         prune: t.prune || {}, origin: t.origin || "", weather: t.weather || {},
         fruit: t.fruit === true, berries: t.berries || 0
       })
@@ -651,22 +657,18 @@ Item {
         thirstRelease.restart()
         fxClock.running = true
       }
-      // Feeding is two halves, and the second is the point: granules land on the
-      // soil, then the tree TAKES THEM UP — motes rising out of the soil, climbing
-      // the trunk, fading out into the canopy.
+      // Feeding is two halves, and the second is the point: pellets sprinkled
+      // onto the soil settle and dissolve, then the tree TAKES THEM UP — motes
+      // of food running from each pellet to the trunk foot and up the real
+      // sap path (Paint.veins) to a clump, which flushes as they arrive.
       function feed() {
-        var soil = fx.height * 0.76
-        for (var i = 0; i < grainPool.count; i++) {
-          var g = grainPool.itemAt(i)
-          if (!g || g.live) continue
-          var gx = fx.width * (0.33 + 0.34 * Math.random())
-          g.fire(gx, soil - 30 - Math.random() * 18, soil + Math.random() * 6, i * 38)
-        }
-        for (var j = 0; j < glintPool.count; j++) {
-          var q = glintPool.itemAt(j)
-          if (!q || q.live) continue
-          q.fire(fx.width * (0.40 + 0.20 * Math.random()), soil, 340 + j * 66)
-        }
+        if (!root.scene || !root.skeleton) return
+        if (root._healthHold < 0) root._healthHold = root._shownHealth
+        var sm = fx.sim()
+        Fx.feed(sm, Paint.veins(root.skeleton, root._view()))
+        fx._feedTarget = sm.stats.arrived + Math.round(sm.stats.motes * 0.4 + Fx.FEED.pellets * Fx.FEED.motes * 0.4)
+        healthRelease.restart()
+        fxClock.running = true
       }
       function milestone() { washAnim.restart() }
 
@@ -699,7 +701,13 @@ Item {
         wet: "#000000",
         glint: String(root.moteTone),
         gold: root.isLight ? "#c8962a" : "#ffd98a",
-        star: root.isLight ? "#fffdf2" : "#ffffff"
+        star: root.isLight ? "#fffdf2" : "#ffffff",
+        pellet: String(Qt.rgba(root.tint.r * 0.62 + 0.24, root.tint.g * 0.62 + 0.20, root.tint.b * 0.44 + 0.12, 1)),
+        pelletHi: String(Qt.rgba(root.tint.r * 0.4 + 0.55, root.tint.g * 0.4 + 0.5, root.tint.b * 0.3 + 0.4, 1)),
+        nutrient: String(root.tint),
+        nutrientHi: String(Qt.lighter(root.tint, 1.6)),
+        flush: String(Qt.rgba(Math.min(1, root.palette.frond.r * 1.45 + 0.08), Math.min(1, root.palette.frond.g * 1.45 + 0.08),
+                              Math.min(1, root.palette.frond.b * 1.45 + 0.08), 1))
       })
       FrameAnimation {
         id: fxClock
@@ -712,12 +720,14 @@ Item {
         sm.scene = root.scene              // the tree may turn under the effect
         Fx.step(sm, dt)
         if (root._thirstHold >= 0 && sm.stats.landed >= fx._pourTarget) fx.releaseThirst()
+        if (root._healthHold >= 0 && sm.stats.arrived >= fx._feedTarget) fx.releaseHealth()
         var pr = Fx.prims(sm), s = root.artScale, dim = root.litBright ? 1 : 0.66
         var n = Math.min(pr.length, fxPool.count)
         for (var i = 0; i < n; i++) {
           var p = pr[i], r = fxPool.itemAt(i)
           if (!r) continue
           r.x = p.x * s; r.y = p.y * s; r.width = p.w * s; r.height = p.h * s
+          r.radius = p.o ? Math.min(r.width, r.height) / 2 : 0
           r.color = fx._tone[p.c] || fx._tone.glint
           r.opacity = (p.c === "glint" || p.c === "gold" || p.c === "star") ? p.a * dim : p.a
           r.visible = true
@@ -728,9 +738,16 @@ Item {
           else if (j >= fx._drawn) break
         }
         fx._drawn = n
-        if (!Fx.alive(sm)) { fxClock.running = false; fx._sim = null; fx.releaseThirst() }
+        if (!Fx.alive(sm)) { fxClock.running = false; fx._sim = null; fx.releaseThirst(); fx.releaseHealth() }
       }
       property int _drawn: 0
+      property int _feedTarget: 0
+      function releaseHealth() {
+        if (root._healthHold < 0) return
+        root._healthHold = -1
+        root.rebuild()
+      }
+      Timer { id: healthRelease; interval: 5000; onTriggered: fx.releaseHealth() }
       function releaseThirst() {
         if (root._thirstHold < 0) return
         root._thirstHold = -1
@@ -748,71 +765,6 @@ Item {
         Rectangle { visible: false; antialiasing: false }
       }
 
-      // feed, part one: granules dropped onto the soil
-      Repeater {
-        id: grainPool
-        model: 12
-        Rectangle {
-          id: grain
-          property bool live: false
-          property real _ty: 0
-          width: 2; height: 2
-          visible: live; opacity: 0
-          color: Qt.rgba(root.tint.r * 0.62 + 0.24, root.tint.g * 0.62 + 0.20, root.tint.b * 0.44 + 0.12, 1)
-          antialiasing: false
-          function fire(px, py, ty, delay) {
-            live = true; x = px; y = py; grain._ty = ty
-            grainHold.duration = delay
-            grainAnim.restart()
-          }
-          SequentialAnimation {
-            id: grainAnim
-            PauseAnimation { id: grainHold; duration: 0 }
-            ParallelAnimation {
-              NumberAnimation { target: grain; property: "y"; to: grain._ty; duration: 300; easing.type: Easing.InQuad }
-              NumberAnimation { target: grain; property: "opacity"; from: 0; to: 0.95; duration: 120 }
-            }
-            NumberAnimation { target: grain; property: "opacity"; to: 0; duration: 430; easing.type: Easing.InQuad }
-            ScriptAction { script: grain.live = false }
-          }
-        }
-      }
-      // feed, part two: the uptake — out of the soil and up into the canopy
-      Repeater {
-        id: glintPool
-        model: 14
-        Rectangle {
-          id: glint
-          property bool live: false
-          property real _tx: 0
-          property real _ty: 0
-          width: 2; height: 2; radius: 1
-          visible: live; opacity: 0
-          color: root.tint
-          antialiasing: false
-          function fire(px, py, delay) {
-            live = true; x = px; y = py
-            glint._tx = px + (Math.random() - 0.5) * 28
-            glint._ty = py - fx.height * (0.34 + 0.26 * Math.random())
-            glintHold.duration = delay
-            gAnim.restart()
-          }
-          SequentialAnimation {
-            id: gAnim
-            PauseAnimation { id: glintHold; duration: 0 }
-            ParallelAnimation {
-              NumberAnimation { target: glint; property: "y"; to: glint._ty; duration: 1150; easing.type: Easing.OutQuad }
-              NumberAnimation { target: glint; property: "x"; to: glint._tx; duration: 1150; easing.type: Easing.InOutSine }
-              SequentialAnimation {
-                NumberAnimation { target: glint; property: "opacity"; from: 0; to: 0.95; duration: 220 }
-                PauseAnimation { duration: 500 }
-                NumberAnimation { target: glint; property: "opacity"; to: 0; duration: 430; easing.type: Easing.InQuad }
-              }
-            }
-            ScriptAction { script: glint.live = false }
-          }
-        }
-      }
       Rectangle {
         id: wash
         anchors.fill: parent

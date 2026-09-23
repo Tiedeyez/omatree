@@ -793,6 +793,68 @@ function footOf(sk) {
 }
 function footRadiusOf(sk) { return footOf(sk)[2] }
 
+// The tree's plumbing, for Fx.js's feeding: for every foliage clump, the path
+// sap actually takes to reach it — up the trunk from where it leaves the soil,
+// out along each bough in the clump's lineage, to the clump. Screen art-px, on
+// the same frame as `scene`. The lineage is in the ids: clump "c.t.b0.0.1s1"
+// hangs off branch "t.b0.0.1", which grows from "t.b0.0", from "t.b0", from
+// the trunk. Built on demand (only while a feed plays), not every frame.
+function veins(sk, V) {
+  // points carry the wood's radius as a 4th element, so food can rise
+  // across the whole width of the trunk rather than up one line
+  var lines = {}, trunk = []
+  for (var i = 0; i < sk.nodes.length; i++) {
+    var n = sk.nodes[i]
+    if (n.kind === "trunk") {
+      if (!trunk.length) trunk.push([n.a[0], n.a[1], n.a[2], n.ra])
+      trunk.push([n.b[0], n.b[1], n.b[2], n.rb])
+    } else if (n.kind === "branch") {
+      var L = lines[n.id]
+      if (!L) L = lines[n.id] = [[n.a[0], n.a[1], n.a[2], n.ra]]
+      L.push([n.b[0], n.b[1], n.b[2], n.rb])
+    }
+  }
+  // the trunk from the soil line up
+  var foot = footOf(sk), tr = [[foot[0], 0, foot[1], foot[2]]]
+  for (var ti = 0; ti < trunk.length; ti++) if (trunk[ti][1] > 0) tr.push(trunk[ti])
+  function nearest(poly, p) {
+    var bi = 0, bd = 1e18
+    for (var k = 0; k < poly.length; k++) {
+      var dx = poly[k][0] - p[0], dy = poly[k][1] - p[1], dz = poly[k][2] - p[2], d = dx * dx + dy * dy + dz * dz
+      if (d < bd) { bd = d; bi = k }
+    }
+    return bi
+  }
+  var out = []
+  for (var c = 0; c < sk.clumps.length; c++) {
+    var cl = sk.clumps[c]
+    if (cl.seedling || !cl.id || cl.id.indexOf("c.") !== 0) continue
+    var id = cl.id.slice(2).replace(/s\d+$/, ""), chain = []
+    while (id && id !== "t") {
+      if (lines[id]) chain.unshift(id)
+      var cut = id.lastIndexOf(".")
+      if (cut < 0) break
+      id = id.slice(0, cut)
+    }
+    if (!chain.length) continue
+    var path = tr.slice(0, nearest(tr, lines[chain[0]][0]) + 1)
+    for (var q = 0; q < chain.length; q++) {
+      var poly = lines[chain[q]]
+      var end = q + 1 < chain.length ? nearest(poly, lines[chain[q + 1]][0]) : poly.length - 1
+      path = path.concat(poly.slice(0, end + 1))
+    }
+    path.push([cl.c[0], cl.c[1], cl.c[2], 0])
+    var pts = []
+    for (var pp = 0; pp < path.length; pp++) {
+      var P = project(path[pp], V)
+      pts.push([P.x, P.y, (path[pp][3] || 0) * V.art * P.s])
+    }
+    var pc = project(cl.c, V)
+    out.push({ id: cl.id, pts: pts, cx: pc.x, cy: pc.y, r: cl.r * V.art * pc.s })
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // per-pixel shaders — a backend calls these for every art-pixel in op's bbox.
 // Return [r,g,b] (0..255) or null for transparent.

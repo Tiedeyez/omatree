@@ -1,6 +1,7 @@
 .pragma library
 // Fx.js — the physics of the care effects: water falling through the tree onto
-// the soil, and light glittering on it and falling out of the sky.
+// the soil, light glittering on it and falling out of the sky, and food
+// sprinkled onto the soil and drawn up through the tree.
 //
 // Pure and deterministic given an rng, so dev/fxlab.js renders exactly what the
 // panel will play. Everything is in ART-PX on the same frame as Paint's
@@ -12,8 +13,8 @@
 // ES5 only: this file also runs inside the QML V4 engine.
 //
 //   var sim = Fx.create(scene, { rng: Math.random })
-//   Fx.water(sim)            Fx.light(sim, ambient)
-//   Fx.step(sim, dt)         Fx.prims(sim) -> [{ x, y, w, h, c, a }]
+//   Fx.water(sim)            Fx.light(sim, ambient)     Fx.feed(sim, veins)
+//   Fx.step(sim, dt)         Fx.prims(sim) -> [{ x, y, w, h, c, a, o? }]   (o: draw as an oval)
 //   Fx.alive(sim)
 
 var TAU = Math.PI * 2
@@ -57,13 +58,33 @@ var LIGHT = {
   ambientScale: 0.3   // the idle sparkle plays at this fraction
 }
 
+// Feeding: pellets sprinkled onto the soil, which settle, dissolve, and are
+// TAKEN UP — motes of nutrient running from each pellet to the trunk foot and
+// up the real sap path (Paint.veins) to a clump, which flushes as they arrive.
+var FEED = {
+  pellets: 14,
+  span: 0.5,          // seconds over which the hand lets them go
+  vT: 3.0,            // H/s — a pellet is denser than a drop, the air slows it less
+  bounce: 0.32,       // restitution off the soil
+  skitter: 0.35,      // chance a pellet falling into a clump is knocked sideways
+  rest: [0.25, 0.7],  // seconds a pellet sits before it starts to dissolve
+  dissolve: 0.65,     // seconds to dissolve
+  motes: 2,           // nutrient motes per pellet
+  // seconds to climb the whole sap path. A time, not a speed: the panel's
+  // view has headroom over the tree, so an H-relative speed raced up a small
+  // tree and crawled up a tall one.
+  climb: [1.1, 1.5],
+  flush: 0.8          // seconds a clump glows as the food arrives
+}
+
 function create(scene, opts) {
   opts = opts || {}
   return {
     t: 0, scene: scene, rng: opts.rng || Math.random,
-    water: merge(WATER, opts.water), light: merge(LIGHT, opts.light),
+    water: merge(WATER, opts.water), light: merge(LIGHT, opts.light), feedCfg: merge(FEED, opts.feed),
+    veins: null, flushes: {},
     parts: [], pend: [], lastImpact: -1e9,
-    stats: { landed: 0, caught: 0, dripped: 0, lost: 0 }
+    stats: { landed: 0, caught: 0, dripped: 0, lost: 0, motes: 0, arrived: 0 }
   }
 }
 function merge(base, over) {
@@ -161,6 +182,57 @@ function water(sim) {
   }
 }
 
+function feed(sim, veins) {
+  var F = sim.feedCfg, sc = sim.scene, H = sc.h
+  sim.veins = prepVeins(veins || [])
+  var r = sc.rim, rx0 = 1e9, rx1 = -1e9
+  for (var i = 0; i < 4; i++) { rx0 = Math.min(rx0, r[i][0]); rx1 = Math.max(rx1, r[i][0]) }
+  var inset = (rx1 - rx0) * 0.14
+  for (var n = 0; n < F.pellets; n++) {
+    var d = rr(sim, 0.15, 0.95), tx = rr(sim, rx0 + inset, rx1 - inset)
+    if (soilY(sc, tx, d) === null) continue
+    sim.pend.push({ at: sim.t + F.span * n / F.pellets + rr(sim, 0, 0.05), p: {
+      k: "p", x: tx, y: -rr(sim, 0.01, 0.05) * H, vx: 0, vy: rr(sim, 0.1, 0.25) * H, d: d,
+      behind: d < 0.2, hit: {}, state: 0, bounces: 0, age: 0, big: sim.rng() < 0.5 } })
+  }
+}
+// cumulative lengths, so a mote can be placed by distance along its path
+function prepVeins(vs) {
+  var out = []
+  for (var i = 0; i < vs.length; i++) {
+    var v = vs[i], acc = [0], L = 0
+    for (var k = 1; k < v.pts.length; k++) {
+      var dx = v.pts[k][0] - v.pts[k - 1][0], dy = v.pts[k][1] - v.pts[k - 1][1]
+      L += Math.sqrt(dx * dx + dy * dy); acc.push(L)
+    }
+    if (L > 0) out.push({ id: v.id, pts: v.pts, acc: acc, len: L, cx: v.cx, cy: v.cy, r: Math.max(1, v.r) })
+  }
+  return out
+}
+// the point `s` along a vein, displaced `lane` (-1..1) across the wood's
+// width — perpendicular to the path, scaled by the radius there
+function alongVein(v, s, lane) {
+  var a = v.acc, k = 1
+  while (k < a.length - 1 && a[k] < s) k++
+  var p0 = v.pts[k - 1], p1 = v.pts[k]
+  var seg = a[k] - a[k - 1], u = seg > 0 ? clamp((s - a[k - 1]) / seg, 0, 1) : 1
+  var x = p0[0] + (p1[0] - p0[0]) * u, y = p0[1] + (p1[1] - p0[1]) * u
+  if (lane && seg > 0) {
+    var r = ((p0[2] || 0) + ((p1[2] || 0) - (p0[2] || 0)) * u) * 0.7
+    x += -(p1[1] - p0[1]) / seg * lane * r
+    y += (p1[0] - p0[0]) / seg * lane * r
+  }
+  return [x, y]
+}
+// a bigger clump drinks more: pick one weighted by its size
+function pickVein(sim) {
+  var vs = sim.veins, tot = 0
+  for (var i = 0; i < vs.length; i++) tot += vs[i].r * vs[i].r
+  var x = sim.rng() * tot
+  for (var j = 0; j < vs.length; j++) { x -= vs[j].r * vs[j].r; if (x <= 0) return vs[j] }
+  return vs[vs.length - 1]
+}
+
 function light(sim, ambient) {
   var L = sim.light, sc = sim.scene, H = sc.h
   var k = ambient === true ? L.ambientScale : 1
@@ -215,8 +287,10 @@ function substep(sim, dt) {
     var p = sim.parts[i]
     if (p.k === "w" || p.k === "s" || p.k === "m") {
       var sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy)
-      p.vx += -kDrag * sp * p.vx * dt
-      p.vy += (g - kDrag * sp * p.vy) * dt
+      if (!p.float) {
+        p.vx += -kDrag * sp * p.vx * dt
+        p.vy += (g - kDrag * sp * p.vy) * dt
+      }
       p.x += p.vx * dt; p.y += p.vy * dt
       if (p.k === "w") {
         {
@@ -274,6 +348,37 @@ function substep(sim, dt) {
         p.soak += dt
         if (p.soak > 2.4) continue
       }
+    } else if (p.k === "p") {
+      if (!stepPellet(sim, p, dt, out)) continue
+    } else if (p.k === "seep" || p.k === "fl") {
+      p.age += dt
+      if (p.age > p.life) continue
+    } else if (p.k === "n") {
+      p.age += dt
+      if (p.age < 0) { out.push(p); continue }
+      var FC = sim.feedCfg
+      if (p.phase === 0) {
+        // through the soil to the trunk foot
+        p.u += dt / p.toFoot
+        if (p.u >= 1) { p.phase = 1; p.s = 0 }
+      } else {
+        // up the sap path, a little quicker as the wood narrows
+        p.s += p.v.len / p.climb * dt * (0.8 + 0.5 * p.s / p.v.len)
+        if (p.s >= p.v.len) {
+          sim.stats.arrived++
+          var key = p.v.id, f = sim.flushes[key]
+          if (!f || f.age > f.life * 0.5) {
+            f = { k: "fl", x: p.v.cx, y: p.v.cy, r: p.v.r, age: 0, life: FC.flush, behind: false }
+            sim.flushes[key] = f
+            out.push(f)
+          } else f.age = Math.min(f.age, 0.1)
+          for (var sp2 = 0; sp2 < 2; sp2++)
+            out.push({ k: "m", x: p.v.cx + rr(sim, -1, 1) * p.v.r * 0.5, y: p.v.cy + rr(sim, -1, 0.3) * p.v.r * 0.4,
+                       vx: rr(sim, -0.05, 0.05) * H, vy: -rr(sim, 0.04, 0.1) * H, age: 0, life: rr(sim, 0.25, 0.45),
+                       c: "nutrient", behind: false, float: true })
+          continue
+        }
+      }
     } else if (p.k === "g") {
       p.age += dt
       if (p.age > p.life) continue
@@ -302,6 +407,68 @@ function substep(sim, dt) {
     out.push(p)
   }
   sim.parts = out
+}
+
+// a pellet: falls, may be knocked aside by the leaves, bounces on the soil
+// (and off the rim wall), settles, sits, dissolves into a seep that feeds motes
+function stepPellet(sim, p, dt, out) {
+  var F = sim.feedCfg, sc = sim.scene, H = sc.h, W = sim.water
+  p.age += dt
+  if (p.state === 0) {
+    var g = W.g * H, k = W.g / (F.vT * F.vT * H)
+    var sp = Math.sqrt(p.vx * p.vx + p.vy * p.vy)
+    p.vx += -k * sp * p.vx * dt
+    p.vy += (g - k * sp * p.vy) * dt
+    p.x += p.vx * dt; p.y += p.vy * dt
+    if (p.bounces === 0) {
+      var cl = sc.clumps
+      for (var c = 0; c < cl.length; c++) {
+        if (p.hit[c] || !inClump(cl[c], p.x, p.y)) continue
+        p.hit[c] = true
+        if (sim.rng() < F.skitter) { p.vy *= 0.35; p.vx += rr(sim, -0.16, 0.16) * H }
+      }
+    }
+    // the rim wall turns it back in rather than letting it roll off the soil
+    var span = rimSpan(sc, p.x)
+    if (p.bounces > 0 && !span) { p.x -= p.vx * dt; p.vx = -p.vx * 0.5; span = rimSpan(sc, p.x) }
+    var sy = soilY(sc, p.x, p.d)
+    if (sy !== null && p.y >= sy && p.vy > 0) {
+      p.y = sy
+      if (p.bounces < 2 && p.vy > 0.12 * H) {
+        p.bounces++
+        p.vy = -p.vy * F.bounce
+        p.vx = p.vx * 0.5 + rr(sim, -0.08, 0.08) * H * (p.bounces === 1 ? 1 : 0.5)
+      } else {
+        p.state = 1; p.vx = 0; p.vy = 0; p.restT = rr(sim, F.rest[0], F.rest[1]); p.age = 0
+      }
+    }
+    var fl = floorY(sc, p.d)
+    if (sy === null && fl !== null && p.y >= fl) { p.y = fl; p.state = 3; p.age = 0; return true }
+    if (sy === null && p.y > H + 2) return false
+    return true
+  }
+  // knocked off the pot onto the table: it lies there a moment and is gone
+  if (p.state === 3) return p.age < 1.2
+  if (p.state === 1) {
+    if (p.age >= p.restT) {
+      p.state = 2; p.age = 0
+      out.push({ k: "seep", x: p.x, y: p.y + 0.5, age: 0, life: F.dissolve + 1.4, asp: soilAspect(sc), behind: false })
+      if (sim.veins && sim.veins.length) {
+        var foot = sim.veins[0].pts[0]
+        for (var m = 0; m < F.motes; m++) {
+          var v = pickVein(sim)
+          var dx = foot[0] - p.x, dy = foot[1] - p.y
+          sim.stats.motes++
+          out.push({ k: "n", x: p.x, y: p.y, x0: p.x, y0: p.y, v: v, phase: 0, u: 0, s: 0,
+                     toFoot: clamp(Math.sqrt(dx * dx + dy * dy) / (0.35 * H), 0.12, 0.6),
+                     age: -rr(sim, 0.1, F.dissolve), wob: sim.rng() * TAU, lane: rr(sim, -0.85, 0.85), behind: false,
+                     climb: rr(sim, F.climb[0], F.climb[1]) })
+        }
+      }
+    }
+    return true
+  }
+  return p.age < F.dissolve
 }
 
 function impact(sim, out, p, sy, speed) {
@@ -351,7 +518,7 @@ function alive(sim) { return sim.parts.length > 0 || sim.pend.length > 0 }
 
 // ---- drawing ----------------------------------------------------------------
 // Colours are keys the caller maps to its theme:
-//   water waterHi splash wet glint gold star
+//   water waterHi splash wet glint gold star pellet pelletHi nutrient nutrientHi flush
 function prims(sim) {
   var out = [], sc = sim.scene, W = sim.water, H = sc.h
   for (var i = 0; i < sim.parts.length; i++) {
@@ -360,6 +527,13 @@ function prims(sim) {
       var fadeIn = clamp(p.age / 0.35, 0, 1), soak = 1 - clamp(p.soak / 2.4, 0, 1)
       var rx = 1.2 + 1.8 * fadeIn + p.amt * 1.2
       ellipseFill(out, p.x, p.y, rx, Math.max(0.6, rx * p.asp), "wet", 0.42 * p.amt * fadeIn * soak * soak)
+    }
+  }
+  for (var s2 = 0; s2 < sim.parts.length; s2++) {
+    var sp2 = sim.parts[s2]
+    if (sp2.k === "seep") {
+      var ks = sp2.age / sp2.life
+      ellipseFill(out, sp2.x, sp2.y, 1.2 + 2.2 * Math.sqrt(ks), Math.max(0.6, (1.2 + 2.2 * Math.sqrt(ks)) * sp2.asp), "wet", 0.34 * (1 - ks))
     }
   }
   for (var j = 0; j < sim.parts.length; j++) {
@@ -375,10 +549,23 @@ function prims(sim) {
     } else if (q.k === "b") {
       out.push(px(q.x, q.y, "waterHi", 0.55 + 0.4 * Math.sin(q.age * 20), 1))
     } else if (q.k === "m" || q.k === "s") {
-      out.push(px(q.x, q.y, "splash", q.k === "m" ? 0.8 * (1 - q.age / q.life) : 0.85, 1))
+      out.push(px(q.x, q.y, q.c || "splash", q.k === "m" ? 0.8 * (1 - q.age / q.life) : 0.85, 1))
     } else if (q.k === "r") {
       var k = q.age / q.life, rxr = 1 + 3.2 * Math.sqrt(k)
       ellipseRing(out, q.x, q.y, rxr, Math.max(0.5, rxr * q.asp), "splash", 0.75 * (1 - k))
+    } else if (q.k === "p") {
+      var fade = q.state === 2 ? 1 - q.age / sim.feedCfg.dissolve : q.state === 3 ? 1 - q.age / 1.2 : 1
+      if (q.big && fade > 0.5) {
+        out.push({ x: Math.floor(q.x) - 1, y: Math.floor(q.y) - 1, w: 2, h: 2, c: "pellet", a: fade })
+        out.push({ x: Math.floor(q.x) - 1, y: Math.floor(q.y) - 1, w: 1, h: 1, c: "pelletHi", a: 0.8 * fade })
+      } else out.push({ x: Math.floor(q.x), y: Math.floor(q.y) - 1, w: 1, h: 1, c: "pellet", a: fade })
+    } else if (q.k === "n") {
+      nutrient(out, q)
+    } else if (q.k === "fl") {
+      var k2 = q.age / q.life, glow = Math.sin(Math.PI * Math.min(1, k2 * 1.6)) * (1 - k2 * 0.4)
+      // the leaves themselves brightening — their own colour, lifted — not a
+      // tint laid over them (the accent read as a grey smudge on teal leaves)
+      ellipseFill(out, q.x, q.y, q.r * 0.8, q.r * 0.6, "flush", 0.34 * glow)
     } else if (q.k === "g") {
       spark(out, q)
     } else if (q.k === "f") {
@@ -386,6 +573,28 @@ function prims(sim) {
     }
   }
   return out
+}
+
+// a mote of food: a bright head and a short fading tail back along its path
+function nutrient(out, q) {
+  if (q.age < 0) return
+  var a = clamp(q.age / 0.15, 0, 1)
+  var head, t1, t2
+  if (q.phase === 0) {
+    var foot = q.v.pts[0], u = q.u, u1 = Math.max(0, u - 0.18), u2 = Math.max(0, u - 0.36)
+    head = [q.x0 + (foot[0] - q.x0) * u, q.y0 + (foot[1] - q.y0) * u]
+    t1 = [q.x0 + (foot[0] - q.x0) * u1, q.y0 + (foot[1] - q.y0) * u1]
+    t2 = [q.x0 + (foot[0] - q.x0) * u2, q.y0 + (foot[1] - q.y0) * u2]
+    a *= 0.7                        // still in the soil: dimmer
+  } else {
+    // each mote keeps to its own channel across the wood, drifting a little
+    var ln = q.lane + Math.sin(q.s * 0.35 + q.wob) * 0.12
+    head = alongVein(q.v, q.s, ln); t1 = alongVein(q.v, q.s - 2, ln); t2 = alongVein(q.v, q.s - 4, ln)
+  }
+  q.x = head[0]; q.y = head[1]
+  out.push({ x: Math.floor(t2[0]), y: Math.floor(t2[1]), w: 1, h: 1, c: "nutrient", a: 0.25 * a })
+  out.push({ x: Math.floor(t1[0]), y: Math.floor(t1[1]), w: 1, h: 1, c: "nutrient", a: 0.5 * a })
+  out.push({ x: Math.floor(head[0]), y: Math.floor(head[1]), w: 1, h: 1, c: "nutrientHi", a: 0.95 * a })
 }
 
 function spark(out, q) {
@@ -449,16 +658,13 @@ function line(out, x0, y0, x1, y1, c, a, thick) {
   }
   out.push({ x: runX, y: runY, w: w, h: runLen, c: c, a: a })
 }
+// a filled ellipse as ONE rect flagged oval (o: 1): the panel draws it as a
+// fully rounded Rectangle, the lab as a true pixel ellipse. Row-by-row it cost
+// a rect per scanline, and a feed's flushing clumps alone ran past 200.
 function ellipseFill(out, cx, cy, rx, ry, c, a) {
   if (a <= 0.01) return
-  var y0 = Math.floor(cy - ry), y1 = Math.floor(cy + ry)
-  for (var y = y0; y <= y1; y++) {
-    var v = (y + 0.5 - cy) / ry
-    if (v * v >= 1) continue
-    var hw = rx * Math.sqrt(1 - v * v)
-    var xa = Math.round(cx - hw), xb = Math.round(cx + hw)
-    if (xb > xa) out.push({ x: xa, y: y, w: xb - xa, h: 1, c: c, a: a })
-  }
+  var x0 = Math.round(cx - rx), y0 = Math.round(cy - ry)
+  out.push({ x: x0, y: y0, w: Math.max(1, Math.round(cx + rx) - x0), h: Math.max(1, Math.round(cy + ry) - y0), c: c, a: a, o: 1 })
 }
 function ellipseRing(out, cx, cy, rx, ry, c, a) {
   if (a <= 0.02) return

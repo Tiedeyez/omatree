@@ -25,8 +25,8 @@ function loadLib (rel, exportList) {
 const TreeGen = loadLib('TreeGen.js', 'genesis,STYLES,GENUS_NAMES,GENUS,EXOTIC_GENUS_NAMES,exoticGenesis,exoticGenesisFromSeed,graftAliasSeed,fuse,exportGraft,importGraft')
 const Grow = loadLib('Grow.js', 'grow')
 const Paint = loadLib('Paint.js',
-  'build,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime,lampDir')
-const Fx = loadLib('Fx.js', 'create,water,light,step,prims,alive,soilY,visibleDrops,WATER,LIGHT')
+  'build,veins,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime,lampDir')
+const Fx = loadLib('Fx.js', 'create,water,light,feed,step,prims,alive,soilY,visibleDrops,WATER,LIGHT,FEED')
 
 function shaderFor (op) {
   return op.op === 'blob' ? Paint.blobPixel

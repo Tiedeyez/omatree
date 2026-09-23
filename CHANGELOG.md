@@ -15,14 +15,24 @@ asks you to confirm; this file is the same story in plain language.
   Drips off an overhanging bough come down on the table beside the pot. The
   soil darkens and the crown lifts when the water arrives, not the moment you
   press the button.
+- **Feeding feeds the tree.** Granules used to fade on the same wrong fixed
+  line as the water, and "uptake" motes rose in a box around the middle of
+  the frame. Now pellets are sprinkled straight down onto the soil, and one
+  may get knocked aside by the leaves. They bounce once or twice (the rim
+  wall turns them back in), settle, and dissolve into a dark seep. Then the
+  tree takes them up. Motes of food run from each pellet to the trunk foot and
+  climb the real path the sap takes, spread across the width of the trunk and
+  out along each bough to its foliage. Each clump brightens in its own colour
+  as the food reaches it, and the crown greens then too, not the moment you
+  press the button.
 - **Light twinkles, and glitter falls.** Points of light across the foliage
   twinkle unevenly, most of them flaring into a small four-point sparkle, since
   a single pale pixel disappeared on bright leaves. Glitter drifts down out of
   the sky, tumbling so it flashes as it falls, and some catches in the leaves.
   About four times as many lit points as before. The idle sparkle while the
   lamp is on comes every 2.5 minutes instead of 5.
-- Both run on one shared particle file (`Fx.js`) drawn with a pool of pixel
-  rects, at about 0.2 ms a frame, and only while an effect is playing.
+- All three run on one shared particle file (`Fx.js`) drawn with a pool of
+  pixel rects, at about 0.2 ms a frame, and only while an effect is playing.
   `dev/fxlab.js` renders the same code over the real tree for tuning.
   `qs ipc … tiedeyez.omatree.fx preview water` plays an effect with no care
   behind it. See DISCLOSURE.md.
