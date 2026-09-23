@@ -63,6 +63,28 @@ holds that state. Empty it (`{}`) or delete it to go back to normal.
 Overrides only touch what's displayed; the persisted state file is left alone.
 `override.json` is gitignored.
 
+## 4. Tune the care effects — `dev/fxlab.js`
+
+Water and light are particle physics in `Fx.js` (gravity with drag, the canopy
+catching and dripping water, drops passing behind foliage, impacts on the real
+soil from Paint's `scene`; twinkling sparkles and falling glitter). The lab runs
+that same file over the real tree:
+
+```sh
+node dev/fxlab.js out/ --set water                 # every water variant
+node dev/fxlab.js out/ --set light --only L0,L2    # today's baseline vs the new
+node dev/fxlab.js out/ --set water --at 0.4,0.8,1.2   # those moments, full size
+```
+
+Per variant: a GIF, a contact sheet of the active window, a "trail" (every frame
+stacked, so trajectories show in one image), and a metrics line — duration,
+peak rects (the panel's Rectangle pool is 240), visible drops or lit points per
+frame, and where the water went (landed / caught / dripped / lost).
+
+In the live shell, `qs ipc -p /usr/share/omarchy/shell call tiedeyez.omatree.fx
+preview water` (or `light`, `ambient`) plays an effect in the open panel without
+watering anything.
+
 ## State file
 
 `~/.local/state/omarchy/omatree-state.json` carries `origin` (""|"seed"|"cutting"),

@@ -4,6 +4,29 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.15 — 2026-09-23
+
+- **Watering is water now.** Drops used to slide down to a fixed line on the
+  screen, which sat below the soil, so every drop finished on the pot's front
+  face and rippled on the terracotta. Now it falls straight down from above
+  under gravity with air drag, some of it behind the foliage and trunk. The leaves catch about a third of
+  the water, and it beads there and then drips. Each drop lands where the soil
+  actually is, with a ripple, a small splash and a wet patch that soaks in.
+  Drips off an overhanging bough come down on the table beside the pot. The
+  soil darkens and the crown lifts when the water arrives, not the moment you
+  press the button.
+- **Light twinkles, and glitter falls.** Points of light across the foliage
+  twinkle unevenly, most of them flaring into a small four-point sparkle, since
+  a single pale pixel disappeared on bright leaves. Glitter drifts down out of
+  the sky, tumbling so it flashes as it falls, and some catches in the leaves.
+  About four times as many lit points as before. The idle sparkle while the
+  lamp is on comes every 2.5 minutes instead of 5.
+- Both run on one shared particle file (`Fx.js`) drawn with a pool of pixel
+  rects, at about 0.2 ms a frame, and only while an effect is playing.
+  `dev/fxlab.js` renders the same code over the real tree for tuning.
+  `qs ipc … tiedeyez.omatree.fx preview water` plays an effect with no care
+  behind it. See DISCLOSURE.md.
+
 ## 1.2.14 — 2026-09-23
 
 - **The trunk stands inside its pot.** On a grown tree the flare and surface

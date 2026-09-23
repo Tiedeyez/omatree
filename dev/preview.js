@@ -26,6 +26,7 @@ const TreeGen = loadLib('TreeGen.js', 'genesis,STYLES,GENUS_NAMES,GENUS,EXOTIC_G
 const Grow = loadLib('Grow.js', 'grow')
 const Paint = loadLib('Paint.js',
   'build,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime,lampDir')
+const Fx = loadLib('Fx.js', 'create,water,light,step,prims,alive,soilY,visibleDrops,WATER,LIGHT')
 
 function shaderFor (op) {
   return op.op === 'blob' ? Paint.blobPixel
@@ -119,6 +120,6 @@ function frameAnsi (sk, V, bg) {
 }
 
 module.exports = {
-  TreeGen, Grow, Paint,
+  TreeGen, Grow, Paint, Fx,
   renderBuffer, flatten, toAnsi, frameAnsi, loadLib
 }

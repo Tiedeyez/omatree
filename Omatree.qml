@@ -7,6 +7,7 @@ import "TreeGen.js" as TreeGen
 import "Grow.js" as Grow
 import "Paint.js" as Paint
 import "Raster.js" as Raster
+import "Fx.js" as Fx
 
 // The tree as a higher-res pixel-art turntable model. Grow.js builds a 3D
 // skeleton from the machine seed; Paint.js projects + shades it into a draw
@@ -162,6 +163,11 @@ Item {
   property var skeleton: null
   property string _builtKey: ""
   property string _prevOrigin: ""
+  // While a pour is in the air the tree keeps the thirst it had: the soil
+  // darkening and the crown lifting the instant the button is pressed, before
+  // a drop has fallen, read as the water being beside the point. -1 = no hold.
+  property real _thirstHold: -1
+  property real _shownThirst: 0
 
   onTreeChanged: root.rebuild()
   onInHousingChanged: root.rebuild()
@@ -173,6 +179,8 @@ Item {
   function rebuild() {
     if (!root.tree) { root.skeleton = null; return }
     var t = root.tree
+    var thirstShown = root._thirstHold >= 0 ? root._thirstHold : (t.thirst || 0)
+    root._shownThirst = thirstShown
     if (t.gen) root.gen = t.gen
     else if (!root.gen || root.gen.seed !== t.seed)
       root.gen = TreeGen.genesis("seed:" + t.seed, "seed:" + t.seed)
@@ -186,7 +194,7 @@ Item {
     root.refreshSun()
 
     var key = [t.seed, root.gen.style, root._bucket(t.maturity, 0.015),
-      root._bucket(t.ageYears || 0, 0.15), root._bucket(t.thirst, 0.12),
+      root._bucket(t.ageYears || 0, 0.15), root._bucket(thirstShown, 0.12),
       root._bucket(t.health, 0.12), t.origin || "", JSON.stringify(t.prune || {})].join("|")
     key += "|" + (t.fruit === true ? "fruit" : "no-fruit")
     key += "|b" + (t.berries || 0)
@@ -205,7 +213,7 @@ Item {
       root._builtKey = key
       root.skeleton = Grow.grow(root.gen, {
         maturity: t.maturity || 0, ageYears: t.ageYears || 0,
-        thirst: t.thirst || 0, health: (t.health === 0 || t.health > 0) ? t.health : 1,
+        thirst: thirstShown, health: (t.health === 0 || t.health > 0) ? t.health : 1,
         prune: t.prune || {}, origin: t.origin || "", weather: t.weather || {},
         fruit: t.fruit === true, berries: t.berries || 0
       })
@@ -366,7 +374,7 @@ Item {
   // sparkle at all. Nothing says so, and nothing about the pet changes — this
   // side simply reads that it is sleeping and lets it sleep.
   Timer {
-    interval: 300000; repeat: true
+    interval: 150000; repeat: true
     running: root.active && root.sunUp && !!root.skeleton && !!root.tree
       && root.tree.lamp === true && !root.dragging
       && root.tree.companionAsleep !== true
@@ -377,6 +385,7 @@ Item {
 
   // ---- the frame: build the draw list, re-encode the image -------
   property var hitAreas: []
+  property var scene: null              // Paint's physical scene, for Fx.js
   function _view() {
     return {
       yaw: root.renderYaw, pitch: root.renderPitch, showCase: root.inHousing,
@@ -471,6 +480,7 @@ Item {
     var v = root._view()
     var dl = Paint.build(root.skeleton, v)
     root.hitAreas = dl.hitAreas || []
+    root.scene = dl.scene || null
     var key = root._bakeKeyFor(v)
     var url
     if (root.transparent) {
@@ -625,20 +635,21 @@ Item {
       // The beams are longer than the view so they can cross it completely;
       // clipping keeps them on the tree instead of raking over the readouts.
       clip: true
-      // Water comes from above the canopy, falls THROUGH the tree, and lands —
-      // each drop finishes on the soil with a small ring rather than dissolving
-      // in mid-air. Staggered arrivals so it reads as a pour and not a pulse.
+      // Water and light are real particles now (Fx.js): water falls straight
+      // down from above, the canopy catches some of it and drips it on,
+      // drops fall behind the foliage as well as in front, and
+      // each one lands on the soil where the soil actually is — Paint's scene,
+      // not a guessed row — with a ripple, a thrown crown and a wet patch that
+      // soaks in. The same file renders in dev/fxlab.js, so what was tuned
+      // there is what plays here.
       function water() {
-        var soil = fx.height * 0.74
-        for (var i = 0; i < dropPool.count; i++) {
-          var d = dropPool.itemAt(i)
-          if (!d || d.live) continue
-          var px = fx.width * (0.24 + 0.52 * Math.random())
-          // the soil mounds in the middle, so drops at the edges land lower
-          var edge = Math.abs(px / fx.width - 0.5) * 2
-          d.fire(px, -10 - Math.random() * 34, soil + edge * fx.height * 0.04,
-                 i * 42 + Math.random() * 55)
-        }
+        if (!root.scene) return
+        // the soil keeps showing the drink it had until the water reaches it
+        if (root._thirstHold < 0) root._thirstHold = root._shownThirst
+        fx._pourTarget = fx._sim ? fx._sim.stats.landed + Math.round(Fx.WATER.count * 0.45) : Math.round(Fx.WATER.count * 0.45)
+        Fx.water(fx.sim())
+        thirstRelease.restart()
+        fxClock.running = true
       }
       // Feeding is two halves, and the second is the point: granules land on the
       // soil, then the tree TAKES THEM UP — motes rising out of the soil, climbing
@@ -659,155 +670,84 @@ Item {
       }
       function milestone() { washAnim.restart() }
 
-      // Light let in — glitter, not beams. There used to be long raked shafts
-      // crossing the whole frame at the sun's angle, with dust riding down
-      // them; the bars read as an effect laid OVER the tree rather than as
-      // light on it. Now it is only the sparkle: points catching the light all
-      // over the canopy, winking, and going out. Nothing sweeps across.
+      // Light let in: catches of light twinkling on the foliage — most flaring
+      // into a pixel sparkle at their peak, since a lone pale pixel vanishes
+      // on bright green — and glitter drifting down out of the sky, tumbling
+      // so it flashes as it falls, some of it catching in the leaves.
       //
       // ambient = the idle sparkle the tree throws off on its own, at a
       // fraction of the count. A light() the user actually asked for always
       // plays at full strength.
       function light(ambient) {
-        // Land the sparks ON THE FOLIAGE. Scattering across fx's own box — even
-        // biased toward the middle — still fills a rectangle, and a rectangle of
-        // glitter around a tree just draws a box. hitAreas are the screen rects
-        // of the actual foliage clumps (the same ones trim mode offers you), so
-        // picking a clump and a point inside it means the sparkle follows the
-        // tree's real shape and never lights an empty corner.
-        var areas = root.hitAreas
-        var s = root.artScale
-        // Occasional, not a burst: a handful of points, spread over a couple of
-        // seconds, so it twinkles rather than flashes.
-        var budget = ambient === true ? 4 : 12
-        var n = 0
-        for (var i = 0; i < motePool.count && n < budget; i++) {
-          var m = motePool.itemAt(i)
-          if (!m || m.live) continue
-          var px, py
-          if (areas && areas.length > 0) {
-            var r = areas[Math.floor(Math.random() * areas.length)]
-            px = (r.x + Math.random() * r.w) * s
-            py = (r.y + Math.random() * r.h) * s
-          } else {
-            // no clump map yet (a bare sprout): keep it tight to the middle
-            px = fx.width * (0.35 + 0.30 * Math.random())
-            py = fx.height * (0.20 + 0.30 * Math.random())
-          }
-          m.fire(px, py, Math.random() * 1800)
-          n++
-        }
+        if (!root.scene) return
+        Fx.light(fx.sim(), ambient === true)
+        fxClock.running = true
       }
 
-      // The grow lamp used to also paint a warm pool over the tree. QML
-      // Rectangle gradients are linear only, so that pool was a full-width box
-      // with hard left, right and bottom edges — it read as a lit rectangle
-      // sitting around the tree rather than as light. Removed: the lamp still
-      // lights the tree properly through Paint's shading (lampDir(), from
-      // overhead), and the only thing the fx layer adds now is the glitter.
-
-
-      // The glitter itself. Each spark appears somewhere on the canopy, drifts
-      // barely at all — it is a catch of light, not a falling particle — winks
-      // several times and goes out. Staggered starts are what make it read as
-      // sparkle rather than as one synchronised flash.
+      // ---- the particle runner -------------------------------------------
+      property var _sim: null
+      property int _pourTarget: 0
+      function sim() {
+        if (!fx._sim) fx._sim = Fx.create(root.scene, { rng: Math.random })
+        return fx._sim
+      }
+      // theme tones for Fx's colour keys
+      readonly property var _tone: ({
+        water: root.isLight ? "#3a6ea8" : "#8fc7ff",
+        waterHi: root.isLight ? "#1f4f86" : "#e8f6ff",
+        splash: root.isLight ? "#3a6ea8" : "#a8d8ff",
+        wet: "#000000",
+        glint: String(root.moteTone),
+        gold: root.isLight ? "#c8962a" : "#ffd98a",
+        star: root.isLight ? "#fffdf2" : "#ffffff"
+      })
+      FrameAnimation {
+        id: fxClock
+        running: false
+        onTriggered: fx.tick(frameTime)
+      }
+      function tick(dt) {
+        var sm = fx._sim
+        if (!sm) { fxClock.running = false; return }
+        sm.scene = root.scene              // the tree may turn under the effect
+        Fx.step(sm, dt)
+        if (root._thirstHold >= 0 && sm.stats.landed >= fx._pourTarget) fx.releaseThirst()
+        var pr = Fx.prims(sm), s = root.artScale, dim = root.litBright ? 1 : 0.66
+        var n = Math.min(pr.length, fxPool.count)
+        for (var i = 0; i < n; i++) {
+          var p = pr[i], r = fxPool.itemAt(i)
+          if (!r) continue
+          r.x = p.x * s; r.y = p.y * s; r.width = p.w * s; r.height = p.h * s
+          r.color = fx._tone[p.c] || fx._tone.glint
+          r.opacity = (p.c === "glint" || p.c === "gold" || p.c === "star") ? p.a * dim : p.a
+          r.visible = true
+        }
+        for (var j = n; j < fxPool.count; j++) {
+          var q = fxPool.itemAt(j)
+          if (q && q.visible) q.visible = false
+          else if (j >= fx._drawn) break
+        }
+        fx._drawn = n
+        if (!Fx.alive(sm)) { fxClock.running = false; fx._sim = null; fx.releaseThirst() }
+      }
+      property int _drawn: 0
+      function releaseThirst() {
+        if (root._thirstHold < 0) return
+        root._thirstHold = -1
+        root.rebuild()
+      }
+      // a pour that never lands (the view closed, the scene vanished) must
+      // never leave the soil showing the wrong drink
+      Timer { id: thirstRelease; interval: 2600; onTriggered: fx.releaseThirst() }
+      // Every effect draws from one pool of pixel rects. Sized from the lab's
+      // peak (dev/fxlab.js: ~190 for a can pour over a full crown); past it
+      // the tail — the faintest, drawn last — simply isn't drawn that frame.
       Repeater {
-        id: motePool
-        model: 46
-        Rectangle {
-          id: mote
-          required property int index
-          property bool live: false
-          property real _tx: 0
-          property real _ty: 0
-          width: 1 + (mote.index % 3); height: width
-          radius: width > 2 ? 1 : 0
-          visible: live; opacity: 0
-          color: root.moteTone
-          antialiasing: false
-          function fire(px, py, delay) {
-            live = true
-            x = px; y = py
-            // a hair of drift, so it shimmers in place instead of travelling
-            mote._tx = px + (Math.random() - 0.5) * 9
-            mote._ty = py + (Math.random() - 0.5) * 7
-            moteHold.duration = delay
-            moteAnim.restart()
-          }
-          SequentialAnimation {
-            id: moteAnim
-            PauseAnimation { id: moteHold; duration: 0 }
-            ParallelAnimation {
-              NumberAnimation { target: mote; property: "x"; to: mote._tx; duration: 900; easing.type: Easing.InOutSine }
-              NumberAnimation { target: mote; property: "y"; to: mote._ty; duration: 900; easing.type: Easing.InOutSine }
-              SequentialAnimation {
-                NumberAnimation { target: mote; property: "opacity"; from: 0; to: root.litBright ? 1.0 : 0.66; duration: 110; easing.type: Easing.OutQuad }
-                // the wink: quick and uneven, which is what glitter looks like
-                SequentialAnimation {
-                  loops: 3
-                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 0.16 : 0.10; duration: 105 }
-                  NumberAnimation { target: mote; property: "opacity"; to: root.litBright ? 1.0 : 0.66; duration: 105 }
-                }
-                NumberAnimation { target: mote; property: "opacity"; to: 0; duration: 180; easing.type: Easing.InQuad }
-              }
-            }
-            ScriptAction { script: mote.live = false }
-          }
-        }
+        id: fxPool
+        model: 240
+        Rectangle { visible: false; antialiasing: false }
       }
 
-      Repeater {
-        id: dropPool
-        model: 22
-        Item {
-          id: drop
-          property bool live: false
-          property real _landY: 0
-          width: 3; height: 8
-          visible: live
-          function fire(px, py, landY, delay) {
-            live = true
-            x = px; y = py
-            drop._landY = landY
-            streak.opacity = 0
-            splash.opacity = 0
-            dropHold.duration = delay
-            fallAnim.duration = 500 + Math.random() * 280
-            dAnim.restart()
-          }
-          Rectangle {
-            id: streak
-            width: 2; height: parent.height; radius: 1
-            color: root.isLight ? "#3a6ea8" : "#8fc7ff"
-            opacity: 0
-            antialiasing: false
-          }
-          Rectangle {
-            id: splash
-            x: -4; y: parent.height - 3
-            width: 11; height: 4; radius: 2
-            color: "transparent"
-            border.width: 1
-            border.color: root.isLight ? "#3a6ea8" : "#a8d8ff"
-            opacity: 0
-            transformOrigin: Item.Center
-          }
-          SequentialAnimation {
-            id: dAnim
-            PauseAnimation { id: dropHold; duration: 0 }
-            ParallelAnimation {
-              NumberAnimation { id: fallAnim; target: drop; property: "y"; to: drop._landY; duration: 600; easing.type: Easing.InQuad }
-              NumberAnimation { target: streak; property: "opacity"; to: 0.9; duration: 110 }
-            }
-            ScriptAction { script: streak.opacity = 0 }
-            ParallelAnimation {
-              NumberAnimation { target: splash; property: "opacity"; from: 0.85; to: 0; duration: 380; easing.type: Easing.OutQuad }
-              NumberAnimation { target: splash; property: "scale"; from: 0.4; to: 1.7; duration: 380; easing.type: Easing.OutQuad }
-            }
-            ScriptAction { script: drop.live = false }
-          }
-        }
-      }
       // feed, part one: granules dropped onto the soil
       Repeater {
         id: grainPool
@@ -1073,4 +1013,5 @@ Item {
   function feed() { fx.feed() }
   function milestone() { fx.milestone() }
   function light() { fx.light() }
+  function fxLight(ambient) { fx.light(ambient) }
 }

@@ -759,9 +759,39 @@ function build(sk, V) {
   // on the same frame as hitAreas — it orbits with the pot as the tree turns.
   var pm = project([pcx - potR * 0.62, pTopY + 0.18, pcz + potR * 0.62], V)
 
+  // The physical scene the care effects (Fx.js) fall through, in art-px on
+  // the same frame as hitAreas: the pot opening at soil level, the mound that
+  // crowns it, the trunk where it leaves the soil, the saucer, and every
+  // foliage clump as an ellipse. Water that falls onto a guessed "soil line"
+  // lands in mid-air the moment the tree turns or grows; this is where the
+  // soil actually is.
+  var tf = project([sk.nodes.length ? footOf(sk)[0] : 0, pTopY, sk.nodes.length ? footOf(sk)[1] : 0], V)
+  var scene = {
+    w: V.w, h: V.h,
+    rim: [[CP[0].x, CP[0].y], [CP[1].x, CP[1].y], [CP[2].x, CP[2].y], [CP[3].x, CP[3].y]],
+    saucer: [[SP[0].x, SP[0].y], [SP[1].x, SP[1].y], [SP[2].x, SP[2].y], [SP[3].x, SP[3].y]],
+    mound: { cx: soilMoundOp.cx, cy: soilMoundOp.cy, rx: soilMoundOp.rx, ry: soilMoundOp.ry, lift: moundLift },
+    trunk: { x: tf.x, y: tf.y, r: footRadiusOf(sk) * V.art * tf.s },
+    clumps: hitAreas.map(function (h) { return { cx: h.x + h.w / 2, cy: h.y + h.h / 2, rx: h.w / 2, ry: h.h / 2 } })
+  }
+
   return { staticOps: staticOps, leafOps: leafOps, hitAreas: hitAreas,
-           potMoss: { x: pm.x, y: pm.y } }
+           potMoss: { x: pm.x, y: pm.y }, scene: scene }
 }
+
+// where the trunk crosses the soil, and how wide it is there — the first
+// trunk segment to climb past y=0
+function footOf(sk) {
+  for (var i = 0; i < sk.nodes.length; i++) {
+    var n = sk.nodes[i]
+    if (n.kind === "trunk" && n.a[1] <= 0 && n.b[1] > 0) {
+      var u = -n.a[1] / (n.b[1] - n.a[1])
+      return [n.a[0] + (n.b[0] - n.a[0]) * u, n.a[2] + (n.b[2] - n.a[2]) * u, n.ra + (n.rb - n.ra) * u]
+    }
+  }
+  return [0, 0, 1]
+}
+function footRadiusOf(sk) { return footOf(sk)[2] }
 
 // ---------------------------------------------------------------------------
 // per-pixel shaders — a backend calls these for every art-pixel in op's bbox.

@@ -30,6 +30,18 @@ Two consequences worth stating plainly:
   bar, menus and notifications down with it. It has been stable in daily use on
   the author's machine, which is evidence, not a guarantee.
 
+## What it answers
+
+Two targets on the shell's own IPC socket (`qs ipc`), which any program running
+as your user can call — the same as every shell IPC target:
+
+- `tiedeyez.omatree` — `open`, `close`, `show`, `hide`, `toggle` the panel.
+  Provided by the shell's panel base, not written here.
+- `tiedeyez.omatree.fx` — `preview water|light|ambient|feed` plays that care
+  action's **animation only**, in an open panel. Nothing is watered, lit or
+  fed; no state is read or written. It exists to tune the effects against the
+  live shell.
+
 ## What it writes
 
 Everything lives under `$XDG_STATE_HOME/omarchy/` (by default

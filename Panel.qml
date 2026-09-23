@@ -15,6 +15,20 @@ Panel {
   moduleName: "tiedeyez.omatree"
   ipcTarget: "tiedeyez.omatree"
 
+  // Plays a care effect with no care behind it: nothing is watered, lit or
+  // fed, the tree's state is untouched. For tuning the effects (Fx.js)
+  // against the live shell — `qs ipc call tiedeyez.omatree.fx preview water`.
+  IpcHandler {
+    target: "tiedeyez.omatree.fx"
+    function preview(kind: string): void {
+      if (!treeView) return
+      if (kind === "water") treeView.water()
+      else if (kind === "light") treeView.light()
+      else if (kind === "ambient") treeView.fxLight(true)
+      else if (kind === "feed") treeView.feed()
+    }
+  }
+
   property var anchorItem: null
   property var hostWidget: null
   property var treeService: null
