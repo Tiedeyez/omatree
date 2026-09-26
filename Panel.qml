@@ -1569,23 +1569,38 @@ Panel {
           if (!path) return
           pickError = ""
           graftBoundedRead.command = [
-            "python3", "-c",
-            "import os,sys\n"
-            + "p=sys.argv[1]\n"
+            "/usr/bin/python3", "-I", "-c",
+            "import os,stat,sys\n"
+            + "cap=int(sys.argv[2])\n"
             + "try:\n"
-            + "  if os.path.islink(p) or not os.path.isfile(p):\n"
-            + "    sys.exit(1)\n"
-            + "  with open(p,'rb') as f:\n"
-            + "    sys.stdout.buffer.write(f.read(" + (root.treeService.maxGraftFileBytes + 1) + "))\n"
+            + "  fd=os.open(sys.argv[1],os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC|os.O_NONBLOCK)\n"
             + "except OSError:\n"
-            + "  sys.exit(1)",
-            path
+            + "  sys.exit(1)\n"
+            + "try:\n"
+            + "  if not stat.S_ISREG(os.fstat(fd).st_mode):\n"
+            + "    sys.exit(1)\n"
+            + "  buf=b''\n"
+            + "  while len(buf)<cap:\n"
+            + "    chunk=os.read(fd,cap-len(buf))\n"
+            + "    if not chunk: break\n"
+            + "    buf+=chunk\n"
+            + "  sys.stdout.buffer.write(buf)\n"
+            + "except OSError:\n"
+            + "  sys.exit(1)\n"
+            + "finally:\n"
+            + "  os.close(fd)",
+            path, String(root.treeService.maxGraftFileBytes + 1)
           ]
           graftBoundedRead.running = true
         }
 
-        // Bounded read for the graft inbox: a symlink or non-regular file is
-        // refused outright, and at most maxGraftFileBytes+1 bytes are ever
+        // Bounded read for the graft inbox: the path is opened exactly once
+        // with O_NOFOLLOW, and that same descriptor is fstat()ed and read, so
+        // a symlink or non-regular file is refused with no check-then-reopen
+        // race. O_NONBLOCK keeps a FIFO from wedging the open before fstat
+        // rejects it. The interpreter is the absolute system python3 in
+        // isolated mode (-I: no PATH lookup, no PYTHON* env, no user site).
+        // At most maxGraftFileBytes+1 bytes are ever
         // pulled into memory regardless of how large the file on disk is —
         // the same cap Service.qml's parseGraftFile rejects on, just enforced
         // before the bytes exist in this process instead of after.

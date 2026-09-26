@@ -72,9 +72,9 @@ QtObject {
   property string _firstId: ""
   readonly property Process _lister: Process {
     running: r.installed && r._pickedId === "" && r.petsDir !== ""
-    command: ["sh", "-c",
-      "find " + JSON.stringify(r.petsDir)
-      + " -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | LC_ALL=C sort | head -1"]
+    command: ["/usr/bin/sh", "-c",
+      "PATH=/usr/bin; find \"$1\" -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | LC_ALL=C sort | head -1",
+      "sh", r.petsDir]
     stdout: StdioCollector { id: _listOut; waitForEnd: true }
     onExited: r._firstId = _listOut.text.trim()
   }
@@ -92,7 +92,7 @@ QtObject {
   // squad forms at all.
   readonly property Process _squadScan: Process {
     running: r.installed && r.petsDir !== ""
-    command: ["python3", "-c",
+    command: ["/usr/bin/python3", "-I", "-c",
       "import json,os,sys\n"
       + "root=sys.argv[1]; out=[]\n"
       + "try: entries=sorted(os.listdir(root))\n"

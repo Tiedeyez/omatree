@@ -373,14 +373,14 @@ PanelWindow {
 
   Process {
     id: platformsDirMk
-    command: ["mkdir", "-p", root.platformsDir]
+    command: ["/usr/bin/mkdir", "-p", "--", root.platformsDir]
     running: true
     onExited: root.publishCompanionBridge()
   }
   Process {
     // One-time migration: older Omatree published a single
     // omatree-companion.json; the pet no longer reads it.
-    command: ["rm", "-f",
+    command: ["/usr/bin/rm", "-f", "--",
       (Quickshell.env("XDG_STATE_HOME") || ((Quickshell.env("HOME") || "") + "/.local/state"))
         + "/omarchy/omatree-companion.json"]
     running: true

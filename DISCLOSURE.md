@@ -81,14 +81,17 @@ nothing outside the paths listed here.
 
 | Command | When |
 |---|---|
-| `mkdir -p` | creating its own state directories |
-| `sh -c "find ~/.codex/pets … | sort | head -1"` | only when Omarchy Pets is installed and you haven't picked a specific pet — to find the first one. Lists directory names, reads nothing |
-| `python3 -c "…"` (squad scan) | only when Omarchy Pets is installed: reads each pet's `pet.json` under `~/.codex/pets` to collect name, directory and sprite-sheet path — capped at the first 500 entries and 8 valid pets, skips unparseable ones |
-| `rm -f` | the one-time removal of the obsolete file described above |
+| `/usr/bin/mkdir -p` | creating its own state directories |
+| `/usr/bin/sh -c "find \"$1\" … | sort | head -1"` | only when Omarchy Pets is installed and you haven't picked a specific pet — to find the first one. The pets directory is passed as a positional argument, never spliced into the script, and `PATH` is pinned to `/usr/bin`. Lists directory names, reads nothing |
+| `/usr/bin/python3 -I -c "…"` (graft reader) | when you pick a file from the graft inbox: opens it once with `O_NOFOLLOW`, checks that same descriptor is a regular file, and reads at most 16 KiB + 1 byte from it. Symlinks, FIFOs, directories and devices are refused |
+| `/usr/bin/python3 -I -c "…"` (squad scan) | only when Omarchy Pets is installed: reads each pet's `pet.json` under `~/.codex/pets` to collect name, directory and sprite-sheet path — capped at the first 500 entries and 8 valid pets, skips unparseable ones |
+| `/usr/bin/rm -f` | the one-time removal of the obsolete file described above |
 | `omarchy-notification-send` | a desktop notification — the tree is thirsty, a graft took |
 | `omarchy-shell -q shell summon tiedeyez.omatree` | opening its own panel from the desktop ornament |
 
-No shell is ever invoked, nothing downloaded is executed, and nothing in a state
+The one shell above runs a fixed script with its only input as an argument.
+Python runs in isolated mode (`-I`: no `PATH` lookup, no `PYTHON*` environment,
+no user site-packages). Nothing downloaded is executed, and nothing in a state
 or graft file is run as code.
 
 ## Network

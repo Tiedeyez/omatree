@@ -4,6 +4,18 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.2.16 — 2026-09-26
+
+- **Graft reads can't be raced.** Picking a file from the graft inbox now opens
+  it exactly once with `O_NOFOLLOW` and checks and reads that same descriptor,
+  so a file swapped for a symlink between the check and the read is refused.
+  FIFOs, directories and devices are refused too, and the 16 KiB + 1 byte cap
+  is kept.
+- **No PATH lookups for helpers.** Every helper Omatree runs itself is called
+  by absolute path (`/usr/bin/python3 -I`, `/usr/bin/sh`, `/usr/bin/mkdir`,
+  `/usr/bin/rm`). The pets directory reaches `find` as an argument instead of
+  being pasted into the shell script.
+
 ## 1.2.15 — 2026-09-23
 
 - **Watering is water now.** Drops used to slide down to a fixed line on the
