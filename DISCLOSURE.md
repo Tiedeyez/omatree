@@ -63,7 +63,9 @@ earlier version. It deletes nothing else, ever.
 ## What it reads
 
 Its own state and graft inbox, the active Omarchy theme (through the shell's
-own `Color`/`Style`, so the tree matches your desktop) — **and a few files that
+own `Color`/`Style`, so the tree matches your desktop), the date and your
+locale's country (through Qt, only to know the season and which hemisphere's
+calendar to keep; nothing leaves the machine) — **and a few files that
 belong to other plugins**, which deserves an explanation rather than a footnote:
 
 | Path | Why |
@@ -106,9 +108,9 @@ you would send any file.
 ## What it does not do
 
 No credentials, keyring or password access. No camera, microphone, location or
-clipboard. No reading of other applications' data beyond the two state files
-named above. No auto-update. No background process outside the shell it is part
-of. No code execution from data.
+clipboard. No reading of other applications' data beyond the files named
+above. No auto-update. No background process outside the shell it is part of. No code
+execution from data.
 
 ## Who maintains it
 

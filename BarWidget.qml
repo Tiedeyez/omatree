@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // Bar mark: a tiny living tree. Its canopy grows with the tree, sways in the
@@ -111,9 +112,9 @@ BarWidget {
   readonly property bool thriving: root.serviceReady && root.worst < 20
 
   readonly property color canopyColor: !root.serviceReady ? Qt.alpha(button.foreground, 0.4)
-    : root.worst >= 60 ? Color.urgent
+    : root.worst >= 60 ? Commons.Color.urgent
     : root.worst >= 34 ? Qt.rgba(0.95, 0.72, 0.32, 1)
-    : Color.accent
+    : Commons.Color.accent
   readonly property color woodColor: Qt.alpha(button.foreground, 0.55)
 
   // ---- animation clock --------------------------------------------
@@ -299,7 +300,7 @@ BarWidget {
         anim: root.petAnim
         mood: root.petMood
         tint: button.foreground
-        accent: Color.accent
+        accent: Commons.Color.accent
         phase: root.phase
         x: parent.width * 0.62 - width / 2
         y: (trunk.y - content.pads * content.padH * 0.66) - height / 2
@@ -315,7 +316,7 @@ BarWidget {
         sheetUrl: root.codexHere ? (root.treeService ? root.treeService.codexSheetUrl : "") : ""
         mood: "settled"
         tint: button.foreground
-        accent: Color.accent
+        accent: Commons.Color.accent
         phase: root.phase
         x: parent.width * 0.5 + width * 0.22
         y: pot.y - height * 0.58

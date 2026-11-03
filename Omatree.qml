@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "TreeGen.js" as TreeGen
 import "Grow.js" as Grow
@@ -22,8 +23,8 @@ Item {
   property var tree: null                 // treeSpec from Service.qml
   property bool forceFront: false
   property bool inHousing: false
-  property color tint: Color.accent
-  property color textColor: Color.foreground
+  property color tint: Commons.Color.accent
+  property color textColor: Commons.Color.foreground
   property color bgColor: Qt.rgba(0.06, 0.07, 0.08, 1)
   property bool active: true
   // Out on the wallpaper rather than inside the panel. This is about the
@@ -94,41 +95,10 @@ Item {
   }
 
   // ---- palette: a plant tinted to the running theme -------------------
-  function _mixHue(base, target, t) {
-    var d = target - base
-    if (d > 0.5) d -= 1; else if (d < -0.5) d += 1
-    return ((base + d * t) % 1 + 1) % 1
-  }
   function _rgb(c) { return { r: c.r, g: c.g, b: c.b } }
-  readonly property var palette: {
-    var a = root.tint
-    var lite = root.isLight
-    var aSat = a.hsvSaturation
-    var grey = aSat < 0.14
-    var ah = grey ? 0.33 : a.hsvHue
-    var leafH = grey ? 0.32 : root._mixHue(0.30, ah, 0.34)
-    var frond = Qt.hsva(leafH, grey ? 0.14 : (lite ? 0.62 : 0.52), lite ? 0.54 : 0.80, 1)
-    var woodH = grey ? 0.07 : root._mixHue(0.075, ah, 0.14)
-    var trunk = Qt.hsva(woodH, grey ? 0.08 : 0.36, lite ? 0.46 : 0.56, 1)
-    // Earthen terracotta, warm and distinct from the trunk/roots so it reads as
-    // a deliberate pot rather than a continuation of the wood mass. The active
-    // theme is allowed to tint it only very slightly.
-    var potC = Qt.rgba(
-      0.71 + 0.10 * a.r,
-      0.46 + 0.10 * a.g,
-      0.33 + 0.10 * a.b, 1)
-    var soil = Qt.hsva(woodH, grey ? 0.10 : 0.24, lite ? 0.40 : 0.34, 1)
-    var u = Color.urgent
-    var fruit = Qt.hsva(u.hsvSaturation < 0.12 ? leafH : u.hsvHue, 0.55, lite ? 0.72 : 0.9, 1)
-    // Berries stay a fixed, cool indigo rather than following the theme's
-    // urgent hue the way fruit does — they need to read as a distinct kind
-    // of thing (food) wherever fruit happens to land on any given theme.
-    var berry = Qt.hsva(0.70, 0.55, lite ? 0.62 : 0.80, 1)
-    return {
-      frond: root._rgb(frond), trunk: root._rgb(trunk), pot: root._rgb(potC),
-      soil: root._rgb(soil), fruit: root._rgb(fruit), berry: root._rgb(berry)
-    }
-  }
+  // The math lives in Paint.paletteFor, one definition for every view of the tree.
+  readonly property var palette:
+    Paint.paletteFor(root._rgb(root.tint), root._rgb(Commons.Color.urgent), root.isLight)
   onPaletteChanged: root.fullFrame()
 
   // ---- time of day ---------------------------------------------------
@@ -398,7 +368,9 @@ Item {
       art: root.artScaleUnits,
       w: root.artW, h: root.artH, originX: root.originX, originY: root.originY,
       sun: root.sun, lamp: root.tree && root.tree.lamp === true,
-      palette: root.palette, time: root.animate ? root.phase : 0
+      palette: root.palette, time: root.animate ? root.phase : 0,
+      // the calendar (TreeGen.seasonOf, from Service): turning, bare, in flower
+      season: root.tree && root.tree.season ? root.tree.season : null
     }
   }
   // ---- one-shot snapshot export (for sibling plugins, e.g. Omagarden's
@@ -477,7 +449,8 @@ Item {
     // that is the wobble, and it only moves leaves.
     return [root._builtKey, v.yaw, v.pitch, v.art, v.w, v.h, v.originX, v.originY,
             v.showCase, v.lamp, root.reveal, root.transparent, root.solidObject,
-            String(root.bgColor), JSON.stringify(v.palette), JSON.stringify(v.sun)].join("|")
+            String(root.bgColor), JSON.stringify(v.palette), JSON.stringify(v.sun),
+            v.season ? v.season.doy : -1].join("|")
   }
 
   function _encode() {

@@ -155,8 +155,17 @@ function grow(gen, state) {
   // leaves over a short run just above it, not at a single sample: a hard step
   // painted as a shoulder, so the trunk below the first bough read as a jar.
   var PIPE_EASE = 0.08
+  // twin: a second, smaller trunk leaves the first just above the soil, and
+  // takes its share of the wood there like any bough does
+  var TWIN_SHARE = 0.34
+  var tTwin = style === "twin"
+    ? (TRUNK_BURY + 1.2 + 1.2 * m) / ((TRUNK_H_BASE + TRUNK_H_GROW * m) * ageScalar + TRUNK_BURY) : -1
   function trunkPipe(t) {
     var area = 1
+    if (tTwin > 0) {
+      var et = clamp((t - tTwin) / PIPE_EASE, 0, 1)
+      area *= 1 - TWIN_SHARE * et * et * (3 - 2 * et)
+    }
     for (var q = 0; q < boughTs.length; q++) {
       var e = clamp((t - boughTs[q]) / PIPE_EASE, 0, 1)
       area *= 1 - BOUGH_SHARE * e * e * (3 - 2 * e)
@@ -216,12 +225,14 @@ function grow(gen, state) {
   // what has to come down.
   var trunkH = (TRUNK_H_BASE + TRUNK_H_GROW * m) * ageScalar
   var trunkR = (TRUNK_R_BASE + TRUNK_R_GROW * m) * ageScalar * girth
+    * (style === "cascade" ? 0.78 : 1)        // a trunk that bends over a rim is a slimmer one
   var trnd = rngFor(seed, "trunk")
   var ph = trnd() * TAU
 
   var trunkPts = []      // { p:[x,y,z], r, dir:[x,y,z] }
   // how much the nebari adds at the soil line, over the bare shaft there
-  var tSoil = style === "cascade" ? 0 : TRUNK_BURY / (trunkH + TRUNK_BURY)
+  var tSoil = style === "cascade" ? 0.45 * TRUNK_BURY / (0.40 * trunkH + 0.45 * TRUNK_BURY) * 0.4
+    : TRUNK_BURY / (trunkH + TRUNK_BURY)
   var shaftSoil = trunkR * (1 - 0.48 * tSoil) * trunkPipe(tSoil)
   // A trunk that is already stout for its height does not flare much further:
   // an old, fat foot with the full nebari on top swelled into a dome wider
@@ -245,21 +256,35 @@ function grow(gen, state) {
     } else if (style === "literati") {
       off = scl(leanDir, Math.sin(t * gnarlFreq * PI + ph) * gnarlAmp * trunkH * 0.12 + t * lean * trunkH * 0.5)
     } else if (style === "cascade") {
-      if (t < 0.4) { y = t * trunkH * 0.55; off = scl(leanDir, t * lean * trunkH * 0.7) }
-      else {
+      // One arc: up out of the soil (foot buried like any trunk), turning over
+      // the rim at t = 0.4, then falling away past the pot's side. Rising only a
+      // fifth of its height, the old line lay along the soil as a fat lump.
+      if (t < 0.4) {
+        var ku = t / 0.4, eo = 1 - (1 - ku) * (1 - ku)
+        y = -TRUNK_BURY * 0.45 + (0.40 * trunkH + TRUNK_BURY * 0.45) * eo
+        off = scl(leanDir, ku * ku * lean * trunkH * 0.42)
+      } else {
         var k = (t - 0.4) / 0.6
-        y = 0.22 * trunkH - k * trunkH * 0.62
-        off = scl(leanDir, lean * trunkH * 0.5 + k * lean * trunkH * 0.8)
+        y = 0.40 * trunkH + 0.06 * trunkH * Math.sin(k * PI) - k * k * trunkH * 0.95
+        // the fall has to clear the pot wall whatever the lean: on a young
+        // tree the lean alone would bring it down through the terracotta
+        var sk2 = Math.sin(k * PI * 0.5)
+        var clearBy = Math.max(0, potR * 1.45 + trunkR * 0.6 - lean * trunkH * 1.04)
+        off = scl(leanDir, lean * trunkH * (0.42 + 0.62 * sk2) + clearBy * sk2)
       }
     } else if (style === "broom") {
       off = scl(leanDir, Math.sin(t * PI) * gnarlAmp * trunkH * 0.04)
     } else { // informal / twin
       off = scl(leanDir, Math.sin(t * gnarlFreq * PI + ph) * gnarlAmp * trunkH * 0.05 * (1 + t))
+      // a twin's main trunk leans a little away from its partner: the pair open as a V
+      if (style === "twin") off = add(off, scl(leanDir, t * trunkH * 0.16))
     }
     off = scl(off, settle)                              // planted straight at the foot
     off = add(off, scl(windDir, windLoad * t * t * trunkH * 0.22))
     // spiral the lateral offset a touch as the trunk climbs
-    var sp = twist * t * PI * 0.5
+    // (a cascade only twists a little: a full spiral turned its fall up to a
+    // quarter turn off its trained line, across the corner of the box)
+    var sp = twist * t * PI * (style === "cascade" ? 0.08 : 0.5)
     var ox = off[0] * Math.cos(sp) - off[2] * Math.sin(sp)
     var oz = off[0] * Math.sin(sp) + off[2] * Math.cos(sp)
     var p = [ox, y, oz]
@@ -391,6 +416,11 @@ function grow(gen, state) {
   // spawn the main boughs off the upper trunk
   var boughs = g.boughs || 3
   var brnd = rngFor(seed, "boughs")
+  if (style === "cascade") {
+    growCascadeBoughs()
+    boughs = 0
+  }
+  if (style === "twin") growTwin()
   for (var b = 0; b < boughs; b++) {
     var bid = "t.b" + b
     if (clamp(prune[bid] || 0, 0, 1) >= 0.98) continue
@@ -426,6 +456,76 @@ function grow(gen, state) {
   }
 
   return finish()
+
+  // ---- cascade: a small head where the trunk turns over the rim, then pads
+  // that spread sideways along the fall, alternating sides like a trained
+  // cascade. Their ids are their own ("t.k*"), so a cascade's cuts never land
+  // on another style's boughs.
+  function growCascadeBoughs() {
+    var side = [-leanDir[2], 0, leanDir[0]]
+    var crnd = rngFor(seed, "cascade")
+    var tipR0 = trunkAt(trunkPts, 0.40).r
+    if (clamp(prune["t.kh"] || 0, 0, 1) < 0.98) {
+      var hp = trunkAt(trunkPts, 0.36)
+      var hd = norm(add(add([0, 1, 0], scl(leanDir, -0.35)), scl(side, (crnd() - 0.5) * 0.6)))
+      branch("t.kh", hp.p, hd, trunkH * 0.26 * lenGrow, tipR0 * 0.55, 1, 1)
+    }
+    var n = Math.max(3, boughs + 1)
+    for (var k = 0; k < n; k++) {
+      var kid = "t.k" + k
+      if (clamp(prune[kid] || 0, 0, 1) >= 0.98) continue
+      var kt = 0.50 + 0.46 * (n === 1 ? 0.5 : k / (n - 1))
+      var kp = trunkAt(trunkPts, kt)
+      var sgn = k % 2 === 0 ? 1 : -1
+      var kd = norm(add(add(scl(side, sgn), scl(leanDir, 0.45)), [0, -0.10 + crnd() * 0.15, 0]))
+      var kl = trunkH * (0.30 - 0.08 * (k / n)) * (0.85 + crnd() * 0.3) * lenGrow
+      branch(kid, kp.p, kd, kl, kp.r * 0.62 * PIPE_LEAK, 1, k + 2)
+    }
+    // the fall ends in foliage, not in a bare stub of trunk
+    addClump("c.t.tip", add(trunkTop, scl(leanDir, CLUMP_R_BASE)), CLUMP_R_BASE + CLUMP_R_GROW * 0.75, 2)
+  }
+
+  // ---- twin: the second trunk. It leaves the first at tTwin, leans away from
+  // it, stands about two thirds as tall, and carries its own small crown.
+  function growTwin() {
+    var tw = trunkAt(trunkPts, tTwin)
+    var trng = rngFor(seed, "twin")
+    var away = facing + PI * (0.85 + trng() * 0.3)
+    var awayDir = [Math.cos(away), 0, Math.sin(away)]
+    var h2 = trunkH * (0.58 + trng() * 0.12)
+    var r2 = trunkR * Math.sqrt(TWIN_SHARE) * PIPE_LEAK
+    var segN = 9, prev = tw.p, prevR = r2
+    var ph2 = trng() * TAU
+    var pts2 = []
+    for (var k = 1; k <= segN; k++) {
+      var u = k / segN
+      // splays out low, then rises: the gap between the two trunks opens at
+      // the base and the pair read as one tree, not two in a pot
+      var outK = 0.42 * Math.sqrt(u) + 0.05 * Math.sin(u * gnarlFreq * PI + ph2) * gnarlAmp
+      var q = add(tw.p, add(scl(awayDir, outK * h2), [0, u * h2, 0]))
+      var rq = r2 * (1 - 0.45 * u)
+      seg("t2." + k, prev, q, prevR, rq, 0, "trunk")
+      // the second trunk stands in the same soil: the box has to hold its foot too
+      if (q[1] < trunkH * 0.5) footAt(q, rq)
+      pts2.push({ p: q, r: rq })
+      prev = q; prevR = rq
+    }
+    for (var c = 0; c < pts2.length; c++)
+      pts2[c].dir = norm(sub(c < pts2.length - 1 ? pts2[c + 1].p : pts2[c].p, c > 0 ? pts2[c - 1].p : tw.p))
+    var nb = Math.max(2, (g.boughs || 3) - 1)
+    for (var b2 = 0; b2 < nb; b2++) {
+      var id2 = "t2.b" + b2
+      if (clamp(prune[id2] || 0, 0, 1) >= 0.98) continue
+      var at = trunkAt(pts2, 0.55 + 0.40 * (nb === 1 ? 0.5 : b2 / (nb - 1)))
+      var fr3 = frame(at.dir)
+      var az3 = phyllo * b2 + trng() * 0.7 + away
+      var tl3 = Math.min(1.0, 0.5 + breadth * 0.35)
+      var d3 = norm(add(scl(fr3[0], Math.cos(tl3)),
+        scl(add(scl(fr3[1], Math.cos(az3)), scl(fr3[2], Math.sin(az3))), Math.sin(tl3))))
+      if (d3[1] < -0.1) { d3[1] = -0.1; d3 = norm(d3) }
+      branch(id2, at.p, d3, h2 * 0.55 * lenGrow, at.r * Math.sqrt(BOUGH_SHARE) * PIPE_LEAK, 1, b2 + 7)
+    }
+  }
 
   // ---- surface roots: short buttresses splaying from the foot into the soil,
   // so the trunk and the pot read as one planted thing. Grown LAST, into the
@@ -509,6 +609,8 @@ function grow(gen, state) {
       genus: (gen && gen.genus) || "juniper",
       ageScalar: ageScalar, ringCount: ringCount,
       needle: genusParts.indexOf("pine") >= 0 || genusParts.indexOf("juniper") >= 0,
+      // the leaf the rootstock wears (Paint draws each one differently)
+      leaf: LEAF_OF[genusParts[0]] || "fan",
       weeping: genusParts.indexOf("willow") >= 0,
       maturity: m, potR: pot.r,
       thirst: thirst, health: health,
@@ -516,6 +618,12 @@ function grow(gen, state) {
     }
   }
 }
+
+// Which leaf each genus grows. Pine and juniper are the evergreens; every
+// other kind drops its leaves in winter (TreeGen.isDeciduous agrees: the
+// deciduous ones are exactly the ones that are not needle or scale).
+var LEAF_OF = { pine: "needle", juniper: "scale", maple: "fan", "crimson-maple": "fan",
+                zelkova: "fine", plum: "fan", willow: "weeping" }
 
 // Half-width of the pot the tree is planted in. Deep/upright styles get a
 // narrower, taller box; everything else a broad training pot. Kept here so
@@ -587,6 +695,19 @@ function fitPot(potR, min, max, style, foot) {
     Math.abs(min[2] - cz), Math.abs(max[2] - cz))
   if (!(reach > 0)) return { r: potR, depth: potDepthFor(potR, style === 'cascade'), cx: 0, cz: 0 }
 
+  // A cascade is the one style whose crown is MEANT to hang outside the box.
+  // Sliding the box under it (or widening the box to carry it) put the pot
+  // beneath the fall and the trunk over its own soil. The box is sized to the
+  // foot and set a little BACK from the fall, so the trunk climbs out of it,
+  // over the rim, and down.
+  if (style === "cascade" && foot && foot.max[0] >= foot.min[0]) {
+    var fx = (foot.min[0] + foot.max[0]) / 2, fz = (foot.min[1] + foot.max[1]) / 2
+    var fHalf = Math.max(foot.max[0] - foot.min[0], foot.max[1] - foot.min[1]) / 2
+    var rc = Math.max(potR, fHalf / POT_FOOT_LIP, treeH / (2 * POT_MAX_HEIGHT))
+    var ax = fx - cx, az = fz - cz, al = Math.sqrt(ax * ax + az * az) || 1
+    var back = Math.max(0, rc * POT_FOOT_LIP - fHalf) * 0.6
+    return { r: rc, depth: potDepthFor(rc, true), cx: fx + ax / al * back, cz: fz + az / al * back }
+  }
   var want = reach / POT_TARGET_SPREAD           // wide enough to carry the crown
   var hi = treeH / (2 * POT_MIN_HEIGHT)          // but not so wide it looks squat
   var lo = treeH / (2 * POT_MAX_HEIGHT)          // nor so narrow it looks perched

@@ -23,6 +23,8 @@ const num = (n, d) => { const v = +val(n, d); return isNaN(v) ? d : v }
 const flag = (n) => argv.includes('--' + n)
 
 const N = num('n', 1000) | 0
+const TRAIN = flag('train')
+const STYLE_ONLY = val('style', null)
 const MAT = num('maturity', 0.85)
 const AGE = num('age', 0)
 const WORST = num('worst', 0) | 0
@@ -70,7 +72,11 @@ const sLo = SPREAD_LO * fill
 const hLo = HEIGHT_LO * fill
 
 function measure (seed) {
-  const gen = P.TreeGen.genesis('seed:' + seed, 'seed:' + seed)
+  let gen = P.TreeGen.genesis('seed:' + seed, 'seed:' + seed)
+  // --train: style as a 1.4+ planting gets it (TRAIN_POOL, incl. cascade/twin);
+  // --style X: force one style through the same restyle() the save uses
+  if (TRAIN) gen = P.TreeGen.restyle(gen, P.TreeGen.trainingFor(gen.seed, seed * 1000))
+  if (STYLE_ONLY) gen = P.TreeGen.restyle(gen, STYLE_ONLY)
   const sk = P.Grow.grow(gen, {
     maturity: MAT, ageYears: AGE, thirst: 0, health: 1, prune: {}, origin: 'cutting'
   })
@@ -111,12 +117,39 @@ function measure (seed) {
     balance: Math.max(
       Math.abs((b.min[0] + b.max[0]) / 2 - pcx),
       Math.abs((b.min[2] + b.max[2]) / 2 - pcz)) / potR,
-    foot: footR / potR                         // trunk foot vs the rim; past 1 it hangs off the lip
+    foot: footR / potR,                        // trunk foot vs the rim; past 1 it hangs off the lip
+    ...(sk.style === 'cascade' ? cascadeFit(sk, pcx, pcz, potR) : {})
   }
+}
+
+// A cascade is MEANT to overhang and to sit low, so the upright bands say
+// nothing about it. What makes one read right: the fall clears the pot wall
+// rather than passing through it (clear >= CLEAR_LO, measured square, in rims),
+// and it ends somewhere down the pot's side, not above the rim and not below
+// the saucer (drop, as a fraction of the pot's depth).
+const CLEAR_LO = 0.92
+const DROP_LO = 0.15
+const DROP_HI = 1.15
+function cascadeFit (sk, pcx, pcz, potR) {
+  let clear = 9, low = 0
+  for (const n of sk.nodes) {
+    if (n.kind !== 'trunk') continue
+    for (const [pt, r] of [[n.a, n.ra], [n.b, n.rb]]) {
+      low = Math.min(low, pt[1])
+      if (pt[1] >= 0.6 || n.b[1] >= n.a[1]) continue            // above the rim, or still rising
+      clear = Math.min(clear, (Math.max(Math.abs(pt[0] - pcx), Math.abs(pt[2] - pcz)) - r) / potR)
+    }
+  }
+  return { clear, drop: -low / (sk.potDepth || 1) }
 }
 
 function score (r) {
   // distance outside the acceptable band, 0 = inside
+  if (r.style === 'cascade') {
+    return (r.clear < CLEAR_LO ? CLEAR_LO - r.clear : 0)
+      + (r.drop < DROP_LO ? DROP_LO - r.drop : r.drop > DROP_HI ? r.drop - DROP_HI : 0)
+      + (r.foot > FOOT_HI ? r.foot - FOOT_HI : 0)
+  }
   const hiS = spreadHi(r.style)
   const s = r.spread < sLo ? sLo - r.spread
     : r.spread > hiS ? r.spread - hiS : 0
@@ -145,14 +178,23 @@ function stat (name, vals, lo, hi) {
 const rows = []
 for (let i = 0; i < N; i++) rows.push(measure(i))
 
-const spreads = rows.map(r => r.spread)
-const heights = rows.map(r => r.height)
-const stats = [
+// cascades are judged on their own bands (cascadeFit), so they sit out the upright table
+const upright = rows.filter(r => r.style !== 'cascade')
+const cascades = rows.filter(r => r.style === 'cascade')
+const spreads = upright.map(r => r.spread)
+const heights = upright.map(r => r.height)
+const stats = upright.length === 0 ? [] : [
   stat('spread  (canopy/pot)', spreads, sLo, SPREAD_HI),   // headline uses the strict ceiling
   stat('height  (tree/potW)', heights, hLo, HEIGHT_HI),
-  stat('balance (offset/pot)', rows.map(r => r.balance), -1e9, BAL_HI),
-  stat('foot    (trunk/rim)', rows.map(r => r.foot), -1e9, FOOT_HI)
+  stat('balance (offset/pot)', upright.map(r => r.balance), -1e9, BAL_HI),
+  stat('foot    (trunk/rim)', upright.map(r => r.foot), -1e9, FOOT_HI)
 ]
+if (cascades.length) {
+  stats.push(
+    stat('cascade clear (rims)', cascades.map(r => r.clear), CLEAR_LO, 1e9),
+    stat('cascade drop (depth)', cascades.map(r => r.drop), DROP_LO, DROP_HI),
+    stat('cascade foot', cascades.map(r => r.foot), -1e9, FOOT_HI))
+}
 
 function f (v) { return (v).toFixed(2).padStart(7) }
 console.log(`\n${N} seeds · maturity ${MAT} · age ${AGE}` + (grown ? '' : '  (still filling out: lower bands at ' + (100 * fill).toFixed(0) + '%)') + '\n')

@@ -54,6 +54,23 @@ reinstall.
 Full keyboard navigation is available throughout the panel (`↑↓`/`jk` to move,
 `Enter`/`Space` to act, `w`/`f`/`p` shortcuts), grafting included.
 
+### Seasons
+
+![One maple through the year, then a flowering plum, a crimson maple and a pine in winter](docs/omatree-seasons.png)
+
+The tree keeps the real calendar (turned half a year in a southern-hemisphere
+locale). A maple, zelkova, willow or plum turns in autumn, lets a few leaves
+go, and holds the rest through the winter, dusky and still coloured, until new
+green leaves replace them clump by clump in spring. Pine and juniper keep
+their needles; a juniper bronzes a little in the cold. A flowering plum
+flowers in early spring. From December to March snow settles on the foliage
+and the soil.
+
+Winter is gentle on the tree but asks for light: the days draw in, the dark
+builds the light need faster, and the lamp is what it wants. Water and feed
+ask less while it rests, and it grows slowly; spring makes up for it, so a
+year still averages out to the same pace. Nothing about winter harms it.
+
 ### Care pacing
 
 Growth is deliberately slow — roughly a couple of months of daily use from
@@ -110,11 +127,17 @@ seed a 3D skeleton is grown (`Grow.js`), projected and shaded into a draw list
 roots, trunk and branches connect with real physics, not assembled parts. The
 Omarchy wordmark is etched into the pot clay.
 
-Genus (juniper, maple, pine), classical style (formal, informal, slant,
-cascade, windswept, literati, broom, twin), and a short whimsical one-word
-name are all drawn from the seed. The name is generated, not picked from a
-list, kept for the life of the tree, and unlikely to be shared by another
-machine.
+Genus (juniper, maple, pine) and a short whimsical one-word name are drawn
+from the seed. The name is generated, not picked from a list, kept for the
+life of the tree, and unlikely to be shared by another machine. Each genus
+wears its own leaf: pine in flat, dark, layered pads, juniper in spiky tufts,
+maple in bright lobed masses.
+
+The classical style (formal, informal, slant, cascade, windswept, literati,
+broom, twin) is chosen when the tree is planted, the way a real one is
+trained, and kept for its life. A cascade climbs out of a deep pot and falls
+over the rim; a twin splits into two trunks just above the soil. Trees
+planted before 1.4 keep exactly the style they already have.
 
 A headless service keeps the tree living — growing, ageing, getting thirsty —
 while the panel is closed.
@@ -124,8 +147,6 @@ while the panel is closed.
 None at runtime beyond the Omarchy Quattro shell (Quickshell / QML). The tree
 renders fully offline; nothing is fetched over the network. Node.js is used
 only by the optional developer scripts in `dev/`.
-
-## Changelog
 
 ## What it does to your computer
 

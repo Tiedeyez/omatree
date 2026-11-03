@@ -5,3 +5,6 @@ dev/override.json
 *.bak.*
 *.swp
 .DS_Store
+
+# python bytecode
+__pycache__/

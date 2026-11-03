@@ -4,6 +4,8 @@
 //   node dev/shot.js out.png --seed me --maturity 0.7 --yaw 0.6 --age 0 --hour 13
 //   node dev/shot.js grid.png --gallery 9
 //   node dev/shot.js live.png --seed live --maturity 1 --age 0.05   # this desktop's tree, grafts and all
+//   node dev/shot.js grid.png --gallery 12 --gallery-seed 1 --train   # styles as new plantings get them
+//   node dev/shot.js fall.png --seed 7 --genus maple --season autumn  # spring|summer|autumn|late-autumn|winter, or --doy N
 //
 // Same modules + palette as dev/timelapse.js. Writes a PPM to imagemagick.
 
@@ -38,7 +40,7 @@ const PRUNE = num('prune', 0) | 0
 const LAMP = flag('lamp')
 const LIGHT = flag('light')
 const GALLERY = num('gallery', 0) | 0
-const GENUS = val('genus', null)
+const GENUS = val('genus', null)  // juniper|maple|pine, or a graft-only willow|crimson-maple|zelkova|plum
 const STYLE = val('style', null)
 const TIME = flag('anim') ? num('t', 0) : undefined
 
@@ -63,25 +65,16 @@ function genFor (arg) {
   return P.TreeGen.genesis('seed:' + s, 'seed:' + s)
 }
 
-// palette (mirror Omatree.qml)
-function hexHSV (hex) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || ''); if (!m) return { h: .33, s: .6, v: .8 }; const r = parseInt(m[1], 16) / 255, g = parseInt(m[2], 16) / 255, b = parseInt(m[3], 16) / 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn; let h = 0; if (d) { if (mx === r) h = ((g - b) / d) % 6; else if (mx === g) h = (b - r) / d + 2; else h = (r - g) / d + 4; h = (h / 6 + 1) % 1 } return { h, s: mx ? d / mx : 0, v: mx } }
-function hsv (h, s, v) { const i = Math.floor(h * 6), f = h * 6 - i; const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s); return { r: [v, q, p, p, t, v][i % 6], g: [t, v, v, q, p, p][i % 6], b: [p, p, t, v, v, q][i % 6] } }
-function mixHue (a, b, k) { let d = b - a; if (d > .5) d -= 1; else if (d < -.5) d += 1; return ((a + d * k) % 1 + 1) % 1 }
+// palette: the shipped one (Paint.paletteFor), so the harness can't drift from the panel
 function hexRGB (hex) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || ''); return m ? { r: parseInt(m[1], 16) / 255, g: parseInt(m[2], 16) / 255, b: parseInt(m[3], 16) / 255 } : { r: .31, g: .97, b: .45 } }
 const ACCENT = val('accent', '#50f872')
-const ACC = hexHSV(ACCENT)
-const ARGB = hexRGB(ACCENT)
-const grey = ACC.s < 0.14, ah = grey ? .33 : ACC.h
-const PAL = {
-  frond: hsv(grey ? .32 : mixHue(.30, ah, .34), grey ? .14 : (LIGHT ? .62 : .52), LIGHT ? .54 : .80),
-  trunk: hsv(grey ? .07 : mixHue(.075, ah, .14), grey ? .08 : .36, LIGHT ? .46 : .56),
-  // mirrors Omatree.qml potC: earthen terracotta, only faintly tinted by accent
-  pot: { r: 0.71 + 0.10 * ARGB.r, g: 0.46 + 0.10 * ARGB.g, b: 0.33 + 0.10 * ARGB.b },
-  soil: hsv(grey ? .07 : mixHue(.075, ah, .14), grey ? .10 : .24, LIGHT ? .40 : .34),
-  fruit: hsv(grey ? .32 : mixHue(.30, ah, .34), .55, LIGHT ? .72 : .9),
-  // fixed indigo, not accent-mixed — mirrors Omatree.qml's palette.berry
-  berry: hsv(0.70, .55, LIGHT ? .62 : .80)
-}
+const PAL = P.Paint.paletteFor(hexRGB(ACCENT), hexRGB(val('urgent', '#e5534b')), LIGHT)
+
+// --season spring|summer|autumn|fall|late-autumn|winter, or --doy N (0..364,
+// northern numbering). Default: high summer, the look before seasons existed.
+const SEASON_DOY = { spring: 110, 'early-spring': 72, summer: 200, autumn: 292, fall: 292, 'late-autumn': 318, winter: 15 }
+const DOY = val('doy', null) !== null ? num('doy', 200) : (SEASON_DOY[val('season', 'summer')] ?? 200)
+const SEASON = P.TreeGen.seasonOf(DOY)
 // --bg lets the caller render onto a colour the tree's own palette can never
 // produce, so a downstream chroma-key is exact. Keying by flood-fill from the
 // corners cannot reach background pockets ENCLOSED by foliage — those survive as
@@ -111,12 +104,18 @@ function pruneMapFor (gen, mat, age, yaw, hour) {
 }
 
 function renderOne (gen, mat, age, yaw, hour, time) {
-  if (GENUS) gen.genus = GENUS
-  if (STYLE) gen.style = STYLE
+  if (GENUS) {
+    // an exotic genus needs its own model (hue, blossom), not just the label
+    const ex = P.TreeGen.EXOTIC_GENUS_NAMES.indexOf(GENUS) >= 0 ? P.TreeGen.exoticGenesisFromSeed(gen.seed, GENUS) : null
+    if (ex) gen = Object.assign(ex, { style: gen.style, facing: gen.facing, lean: gen.lean })
+    else gen.genus = GENUS
+  }
+  if (flag('train')) gen = P.TreeGen.restyle(gen, P.TreeGen.trainingFor(gen.seed, gen.seed * 1000))
+  if (STYLE) gen = P.TreeGen.restyle(gen, STYLE)
   const prune = pruneMapFor(gen, mat, age, yaw, hour)
   const sk = P.Grow.grow(gen, { maturity: mat, ageYears: age, thirst: THIRST, health: HEALTH, prune: prune, origin: 'cutting', fruit: FRUIT, berries: BERRIES })
   const mz = P.Paint.measureStable(sk, { art: ART, showCase: CASE, yaw, pitch: PITCH })
-  const V = { yaw, pitch: PITCH, art: ART, w: mz.w, h: mz.h, originX: mz.originX, originY: mz.originY, sun: P.Paint.sunForTime(Math.floor(hour), Math.round((hour % 1) * 60)), lamp: LAMP, palette: PAL, time, showCase: CASE }
+  const V = { yaw, pitch: PITCH, art: ART, w: mz.w, h: mz.h, originX: mz.originX, originY: mz.originY, sun: P.Paint.sunForTime(Math.floor(hour), Math.round((hour % 1) * 60)), lamp: LAMP, palette: PAL, time, showCase: CASE, season: SEASON }
   const dl = P.Paint.build(sk, V)
   const sBuf = P.renderBuffer(dl.staticOps, V.w, V.h, BG)
   const lBuf = P.renderBuffer(dl.leafOps, V.w, V.h, BG)
@@ -149,7 +148,8 @@ let W, H, RGB
 if (GALLERY > 0) {
   const cells = []
   for (let i = 0; i < GALLERY; i++) {
-    const seed = (Math.random() * 0xffffffff) >>> 0
+    // --gallery-seed N makes a gallery reproducible (the README's is seed 1)
+    const seed = val('gallery-seed', null) !== null ? (num('gallery-seed', 1) * 7919 + i * 104729) >>> 0 : (Math.random() * 0xffffffff) >>> 0
     cells.push(renderOne(genFor(String(seed)), MAT, AGE, YAW, HOUR, TIME))
   }
   const cols = Math.ceil(Math.sqrt(GALLERY))

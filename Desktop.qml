@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
-
+import qs.Commons as Commons
 // The "desktop snapshot": the Omatree itself, set out to live in the lower-right
 // corner of the desktop as a quiet ornament rather than kept in the bar. It sits on the front-most
 // layer so it remains fully visible, and is click-through except a small tap
@@ -169,7 +169,7 @@ PanelWindow {
       width: Math.round(bed.width * (0.16 + 0.30 * root._fly))
       height: 4
       radius: 2
-      color: Qt.alpha(Color.accent, 0.05 + 0.16 * root._fly)
+      color: Qt.alpha(Commons.Color.accent, 0.05 + 0.16 * root._fly)
     }
 
     Omatree {
@@ -194,8 +194,8 @@ PanelWindow {
       solidObject: true
       tree: root.ready ? treeService.treeSpec : null
       pruneMode: root.desktopPruning
-      tint: Color.accent
-      textColor: Color.foreground
+      tint: Commons.Color.accent
+      textColor: Commons.Color.foreground
       onPruneRequested: function (id) { if (root.ready) treeService.pruneNode(id) }
       onOrbitChanged: function (yaw) { if (root.ready) treeService.setOrbit(yaw) }
       Component.onCompleted: {
@@ -221,8 +221,8 @@ PanelWindow {
       sheetUrl: root.ready && root.treeService.codexHere
         ? (root.treeService.codexSheetUrl || "") : ""
       mood: "settled"
-      tint: Color.foreground
-      accent: Color.accent
+      tint: Commons.Color.foreground
+      accent: Commons.Color.accent
       phase: root.perchPhase
       x: root._petSpotX(bed.width, potLead.width)
       y: root._petSpotY(bed.height, potLead.height) + root.petHopY
@@ -255,8 +255,8 @@ PanelWindow {
         unit: 6.5
         sheetUrl: modelData
         mood: "settled"
-        tint: Color.foreground
-        accent: Color.accent
+        tint: Commons.Color.foreground
+        accent: Commons.Color.accent
         phase: root.perchPhase
         // two a side, flanking the pot, feet on the saucer line
         x: bed.width * (index === 0 ? 0.16 : 0.78) - width / 2
@@ -273,7 +273,7 @@ PanelWindow {
       width: Math.round(bed.width * 0.34); height: 2; radius: 1
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
-      color: Qt.alpha(Color.accent, 0.16 + 0.22 * root._fly)
+      color: Qt.alpha(Commons.Color.accent, 0.16 + 0.22 * root._fly)
       opacity: Math.max(0, root._fly * 3 - 2)
     }
 
@@ -637,7 +637,7 @@ function _petSpotY(bh, h) {
       radius: 8
       color: Qt.rgba(0, 0, 0, 0.54)
       border.width: 1
-      border.color: Qt.alpha(Color.accent, 0.55)
+      border.color: Qt.alpha(Commons.Color.accent, 0.55)
     }
 
     Row {
@@ -668,13 +668,13 @@ function _petSpotY(bh, h) {
           width: actionRow.btnW
           height: 22
           radius: 6
-          color: ma.containsMouse ? Qt.alpha(Color.accent, 0.18) : Qt.rgba(0, 0, 0, 0.18)
+          color: ma.containsMouse ? Qt.alpha(Commons.Color.accent, 0.18) : Qt.rgba(0, 0, 0, 0.18)
           border.width: 1
-          border.color: Qt.alpha(Color.accent, 0.5)
+          border.color: Qt.alpha(Commons.Color.accent, 0.5)
           Text {
             anchors.centerIn: parent
             text: quickAction.modelData.label
-            color: Color.accent
+            color: Commons.Color.accent
             font.family: "monospace"
             font.pixelSize: 9
             font.letterSpacing: 1.2
@@ -708,13 +708,13 @@ function _petSpotY(bh, h) {
       radius: 3
       color: Qt.rgba(0, 0, 0, 0.58)
       border.width: 1
-      border.color: Qt.alpha(Color.accent, 0.65)
+      border.color: Qt.alpha(Commons.Color.accent, 0.65)
     }
     Text {
       id: trimDoneLabel
       anchors.centerIn: parent
       text: "DONE"
-      color: Color.accent
+      color: Commons.Color.accent
       font.family: "monospace"
       font.pixelSize: 10
       font.letterSpacing: 1.5
@@ -740,13 +740,13 @@ function _petSpotY(bh, h) {
       radius: 3
       color: Qt.rgba(0, 0, 0, 0.55)
       border.width: 1
-      border.color: Qt.alpha(Color.accent, returnMa.containsMouse ? 0.8 : 0.4)
+      border.color: Qt.alpha(Commons.Color.accent, returnMa.containsMouse ? 0.8 : 0.4)
     }
     Text {
       id: returnLabel
       anchors.centerIn: parent
       text: "◂ TAKE ME HOME"
-      color: Qt.alpha(Color.accent, returnMa.containsMouse ? 1 : 0.8)
+      color: Qt.alpha(Commons.Color.accent, returnMa.containsMouse ? 1 : 0.8)
       font.family: "monospace"
       font.pixelSize: 10
       font.letterSpacing: 1.5

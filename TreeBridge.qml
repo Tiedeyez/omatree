@@ -57,6 +57,11 @@ Item {
   property var graftLineage: []
   property int maxGrafts: 3
   property string origin: ""
+  property string trainStyle: ""
+  // the same calendar Service reads (no dev override on the bridge)
+  readonly property int seasonDoy: TreeGen.dayOfYear(nowMs, TreeGen.southernLocale(Qt.locale().name))
+  readonly property var season: TreeGen.seasonOf(seasonDoy)
+  readonly property string seasonLabel: season.name
   property var prune: ({})
   property real yaw: 0
   property bool desktopEnabled: false
@@ -147,6 +152,7 @@ Item {
   // --- tree identity + spec, rebuilt deterministically like Service.wake() --
   function _rebuildGenesis() {
     var g = TreeGen.genesis(machineIdLoaded, userName + "@" + hostName)
+    if (trainStyle !== "") g = TreeGen.restyle(g, trainStyle)
     baseGenus = g.genus
     for (var i = 0; i < graftLineage.length && i < maxGrafts; i++) {
       var donor = TreeGen.importGraft(graftLineage[i])
@@ -173,6 +179,7 @@ Item {
     weather: {},
     fruit: fruitVisible,
     berries: berries,
+    season: season,
     devClock: -1
   } : null
 
@@ -242,6 +249,8 @@ Item {
       careCount = Math.round(num(s.careCount))
       form = s.form === "tangled" ? "tangled" : "neat"
       origin = (s.origin === "seed" || s.origin === "cutting") ? s.origin : ""
+      trainStyle = typeof s.trainStyle === "string" && TreeGen.STYLES.indexOf(s.trainStyle) >= 0
+        ? s.trainStyle : ""
       var pr = {}
       if (s.prune && typeof s.prune === "object")
         for (var pk in s.prune) if (!/^\d+$/.test(pk)) pr[pk] = s.prune[pk]

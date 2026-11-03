@@ -4,6 +4,7 @@
 //
 //   node dev/fxlab.js out/ --seed live --set water      # every water variant
 //   node dev/fxlab.js out/ --set light --only L2,L3
+//   node dev/fxlab.js out/ --set water --only W3 --light --frames   # transparent PNG frames
 //
 // Per variant: <name>.gif (the effect in motion), <name>-sheet.png (frames
 // side by side), <name>-trail.png (every frame stacked — trajectories at a
@@ -26,11 +27,19 @@ const YAW = +val('yaw', 0.35)
 const MAT = +val('maturity', 1)
 const AGE = +val('age', 0.06)
 const AT = (val('at', '') || '').split(',').filter(Boolean).map(Number)
+// --light: the light-theme palette and effect tones, as the panel draws them on
+// a light theme. --frames: write each variant as transparent RGBA PNG frames
+// (<name>/0000.png …, 30 fps) instead of the GIF and sheets — the tree is
+// rendered on a key colour no palette can produce, so the cut-out is exact.
+const LIGHT = argv.includes('--light')
+const FRAMES = argv.includes('--frames')
+const KEY = [255, 0, 255]
 FS.mkdirSync(OUT, { recursive: true })
 
 // ---- the tree: background frame + the scene Paint exports ----------------
 const bgPng = `${OUT}/_bg.png`
-cp.execFileSync('node', [__dirname + '/shot.js', bgPng, '--seed', SEED, '--maturity', String(MAT), '--age', String(AGE), '--yaw', String(YAW), '--scale', '1'], { stdio: ['ignore', 'ignore', 'pipe'] })
+cp.execFileSync('node', [__dirname + '/shot.js', bgPng, '--seed', SEED, '--maturity', String(MAT), '--age', String(AGE), '--yaw', String(YAW), '--scale', '1',
+  ...(LIGHT ? ['--light'] : []), ...(FRAMES ? ['--bg', 'ff00ff'] : [])], { stdio: ['ignore', 'ignore', 'pipe'] })
 const dims = cp.execFileSync('magick', ['identify', '-format', '%w %h', bgPng]).toString().split(' ').map(Number)
 const [BW, BH] = dims
 const BG = cp.execFileSync('magick', [bgPng, '-depth', '8', 'rgb:-'], { maxBuffer: 1 << 28 })
@@ -61,10 +70,10 @@ const V = { yaw: YAW, pitch: PITCH, art: ART, w: mz.w, h: mz.h, originX: mz.orig
 const scene = P.Paint.build(sk, V).scene
 if (scene.w !== BW || scene.h !== BH) console.error(`warning: scene ${scene.w}x${scene.h} vs bg ${BW}x${BH}`)
 
-// dark-theme tones, as Omatree.qml maps them
+// effect tones, as Omatree.qml maps them for a dark (default) or light theme
 const TONE = {
-  water: [143, 199, 255], waterHi: [232, 246, 255], splash: [168, 216, 255],
-  wet: [0, 0, 0], glint: [255, 243, 201], gold: [255, 217, 138], star: [255, 255, 255],
+  water: LIGHT ? [58, 110, 168] : [143, 199, 255], waterHi: LIGHT ? [31, 79, 134] : [232, 246, 255], splash: LIGHT ? [58, 110, 168] : [168, 216, 255],
+  wet: [0, 0, 0], glint: [255, 243, 201], gold: LIGHT ? [200, 150, 42] : [255, 217, 138], star: LIGHT ? [255, 253, 242] : [255, 255, 255],
   pellet: [190, 150, 104], pelletHi: [236, 212, 164], nutrient: [120, 240, 160], nutrientHi: [226, 255, 232], flush: [150, 255, 170]
 }
 
@@ -221,6 +230,33 @@ function composite (prims, base) {
   }
   return f
 }
+// RGBA: the tree where the bg is not the key, particles composited "over" it
+const BASE_RGBA = (() => {
+  const o = Buffer.alloc(BW * BH * 4)
+  for (let i = 0, j = 0; i < BG.length; i += 3, j += 4) {
+    const k = BG[i] === KEY[0] && BG[i + 1] === KEY[1] && BG[i + 2] === KEY[2]
+    o[j] = BG[i]; o[j + 1] = BG[i + 1]; o[j + 2] = BG[i + 2]; o[j + 3] = k ? 0 : 255
+  }
+  return o
+})()
+function compositeRGBA (prims) {
+  const f = Buffer.from(BASE_RGBA)
+  for (const p of prims) {
+    const col = TONE[p.c] || TONE.glint, a = Math.max(0, Math.min(1, p.a))
+    for (let y = p.y; y < p.y + p.h; y++) {
+      if (y < 0 || y >= BH) continue
+      for (let x = p.x; x < p.x + p.w; x++) {
+        if (x < 0 || x >= BW) continue
+        if (p.o) { const u = (x + 0.5 - p.x - p.w / 2) / (p.w / 2), v = (y + 0.5 - p.y - p.h / 2) / (p.h / 2); if (u * u + v * v > 1) continue }
+        const i = (y * BW + x) * 4, da = f[i + 3] / 255, na = a + da * (1 - a)
+        if (na <= 0) continue
+        for (let c = 0; c < 3; c++) f[i + c] = (col[c] * a + f[i + c] * da * (1 - a)) / na
+        f[i + 3] = na * 255
+      }
+    }
+  }
+  return f
+}
 function writePng (rgb, w, h, out, scale) {
   cp.execFileSync('magick', ['-size', `${w}x${h}`, '-depth', '8', 'rgb:-', '-filter', 'point', '-resize', `${scale * 100}%`, out], { input: rgb })
 }
@@ -244,11 +280,20 @@ for (const name of Object.keys(list)) {
     // light: distinct lit points (a core pixel over half bright) per frame
     if (SET === 'light' && t < 3) { visSum += pr.filter(q => q.w <= 2 && q.h <= 2 && q.a > 0.5 && q.c !== 'glint' || (q.w === 1 && q.h === 1 && q.a > 0.5)).length; visN++ }
     for (const at of AT) if (Math.abs(t - at) < 0.5 / FPS) atFrames.push(composite(pr, BG))
+    if (FRAMES && Math.round(t * FPS) % CAP === 0) { frames.push(compositeRGBA(pr)); continue }
     if (Math.round(t * FPS) % CAP === 0) {
       const fr = composite(pr, BG)
       frames.push(fr)
       for (let i = 0; i < fr.length; i++) if (fr[i] > trail[i]) trail[i] = fr[i]
     }
+  }
+  if (FRAMES) {
+    const fdir = `${OUT}/${name}`
+    FS.rmSync(fdir, { recursive: true, force: true }); FS.mkdirSync(fdir)
+    frames.forEach((fr, i) => cp.execFileSync('magick', ['-size', `${BW}x${BH}`, '-depth', '8', 'rgba:-',
+      '-filter', 'point', '-resize', `${SCALE * 100}%`, `${fdir}/${String(i).padStart(4, '0')}.png`], { input: fr }))
+    console.log(`${name.padEnd(3)} ${frames.length} RGBA frames -> ${fdir}/ (${BW * SCALE}x${BH * SCALE}, 30 fps)`)
+    continue
   }
   // GIF
   const dir = `${OUT}/_${name}`

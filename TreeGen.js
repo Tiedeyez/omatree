@@ -109,9 +109,11 @@ var GENUS_NAMES = ["juniper", "maple", "pine"]
 var EXOTIC_GENUS_NAMES = ["willow", "crimson-maple", "zelkova", "plum"]
 
 // Training styles. Each biases the trunk line and where foliage sits.
-// STYLES is the full set Grow.js understands (and dev/timelapse --style can pick);
-// STYLE_POOL is what identity actually rolls from — cascade/twin need more work
-// before they read well at bar size.
+// STYLES is the full set Grow.js understands. STYLE_POOL is what identity rolls
+// from, and it is FROZEN: every tree planted before 1.4 takes its style from it,
+// so adding to it would reshape trees people already have. New plantings are
+// trained from TRAIN_POOL instead (see trainingFor() below), which is where
+// cascade and twin live.
 var STYLES = ["formal", "informal", "slant", "cascade", "windswept",
               "literati", "broom", "twin"]
 var STYLE_POOL = ["formal", "informal", "informal", "slant", "windswept",
@@ -459,5 +461,110 @@ function grow(gen, maturity0, tangled0) {
     ringCount: 1 + Math.floor(m * 12),
     bounds: { minX: minX, maxX: maxX, minY: minY, maxY: maxY },
     depth: depth
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Training. In real practice the style is not in the seed — it is how the tree
+// is trained, and that is decided once, at planting. genesis() still rolls a
+// style from STYLE_POOL and always will, untouched, so every tree planted before
+// styles were chosen at planting keeps exactly the shape it has. A tree planted
+// from 1.4 on is trained into one of TRAIN_POOL, chosen from its identity and
+// the moment it went into the soil, and Service keeps that choice in the save.
+// cascade and twin are reachable only this way.
+var TRAIN_POOL = ["formal", "informal", "informal", "slant", "cascade",
+                  "windswept", "literati", "broom", "twin"]
+
+function trainingFor(seed, plantedAtMs) {
+  var rnd = mulberry32(fnv1a(String(seed >>> 0) + "|train:" + Math.floor(Number(plantedAtMs) || 0)))
+  rnd(); rnd(); rnd()
+  return TRAIN_POOL[Math.floor(rnd() * TRAIN_POOL.length)]
+}
+
+// The same identity, trained into another style. Only the numbers that follow
+// from the style move (the lean, the gnarl, which way it is thrown); genus,
+// branching and foliage are the tree's own and stay put.
+function restyle(gen, style) {
+  if (!gen || STYLES.indexOf(style) < 0 || gen.style === style) return gen
+  var out = {}
+  for (var k in gen) out[k] = gen[k]
+  var rnd = mulberry32((gen.seed >>> 0) ^ fnv1a("style:" + style))
+  rnd(); rnd(); rnd()
+  out.style = style
+  out.lean = (style === "slant" ? 0.5 : style === "windswept" ? 0.7
+    : style === "literati" ? 0.32 : style === "cascade" ? 0.8 : 0.08) + rnd() * 0.18
+  out.gnarlAmp = (style === "formal" ? 0.35 : 1) * (0.5 + rnd() * 0.9)
+  // A cascade is trained to fall to one side of the pot, never at the person
+  // looking at it: thrown straight forward it hangs across the pot's face and
+  // hides it. Left or right of the resting view, with a little give.
+  // A twin opens the same way, so both trunks show.
+  if (style === "cascade" || style === "twin")
+    out.facing = (rnd() < 0.5 ? 0 : Math.PI) + (rnd() - 0.5) * 0.5
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Seasons. The tree keeps the real calendar. A season is one number, the day of
+// the year (0..364, northern numbering; a southern install is turned half a year
+// before it gets here), and everything that follows from it is a smooth curve of
+// that number, so nothing jumps at midnight on the 21st. Service (care pacing,
+// the voice) and Paint (the canopy) read this one calendar.
+var DECIDUOUS = { maple: 1, "crimson-maple": 1, zelkova: 1, plum: 1, willow: 1 }
+
+// A grafted tree's label is "base+donor+…"; the base is the rootstock, and it is
+// the rootstock's habit that decides whether the crown drops in winter.
+function baseGenusOf(label) { return String(label || "").split("+")[0] }
+function isDeciduous(label) { return DECIDUOUS[baseGenusOf(label)] === 1 }
+
+// Temperate countries south of the tropics, where the year runs the other way.
+// A tropical locale keeps the northern calendar.
+var SOUTHERN = ["AU", "NZ", "ZA", "AR", "CL", "UY", "PY", "LS", "SZ", "NA", "BW", "FK"]
+function southernLocale(name) {
+  var m = /[_-]([A-Za-z]{2})(\b|$)/.exec(String(name || ""))
+  return !!m && SOUTHERN.indexOf(m[1].toUpperCase()) >= 0
+}
+
+function dayOfYear(ms, south) {
+  var d = new Date(Number(ms) || 0)
+  var doy = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+    - Date.UTC(d.getFullYear(), 0, 1)) / 86400000)
+  if (south) doy += 182
+  return ((doy % 365) + 365) % 365
+}
+
+// the share of a deciduous crown kept through the winter
+var WINTER_COVER = 0.72
+
+function _smooth(a, b, x) {
+  var t = clamp01((x - a) / (b - a))
+  return t * t * (3 - 2 * t)
+}
+
+// Everything a renderer or the care clock needs from the calendar, as 0..1
+// curves of the day of the year (northern dates in the comments):
+//   turn    autumn colour, from late September to its full turn by November,
+//           held through the winter and grown out as new leaves come in spring
+//   cover   how much of a deciduous crown is on the tree: it thins a little
+//           through November and keeps most of itself all winter. A bare
+//           tree reads as a dead one, and this one is resting, not gone.
+//   fresh   the soft new growth of spring
+//   bloom   flowering-plum blossom, early March to mid-April
+//   dormant how deep in winter rest the tree is
+//   snow    snow on the foliage and the soil, from early December to March
+//   dark    how short the days are: 1 at the winter solstice, 0 at midsummer
+function seasonOf(doy) {
+  var d = ((Math.floor(Number(doy) || 0) % 365) + 365) % 365
+  var name = d < 79 || d >= 355 ? "winter" : d < 172 ? "spring" : d < 265 ? "summer" : "autumn"
+  return {
+    doy: d,
+    name: name,
+    turn: d >= 258 ? _smooth(258, 305, d) : d < 130 ? 1 - _smooth(85, 125, d) : 0,
+    cover: d < 85 ? WINTER_COVER : d < 295 ? WINTER_COVER + (1 - WINTER_COVER) * _smooth(85, 120, d)
+      : 1 - (1 - WINTER_COVER) * _smooth(295, 335, d),
+    fresh: d >= 85 && d < 185 ? _smooth(85, 110, d) * (1 - _smooth(130, 180, d)) : 0,
+    bloom: d < 130 ? _smooth(55, 75, d) * (1 - _smooth(95, 118, d)) : 0,
+    dormant: d >= 300 ? _smooth(300, 345, d) : d < 100 ? 1 - _smooth(60, 100, d) : 0,
+    snow: d >= 330 ? _smooth(330, 352, d) : d < 85 ? 1 - _smooth(60, 85, d) : 0,
+    dark: 0.5 + 0.5 * Math.cos(2 * Math.PI * (d - 355) / 365)
   }
 }

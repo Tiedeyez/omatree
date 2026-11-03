@@ -136,6 +136,18 @@ function measureStable(sk, V0) {
   var bx = Math.max(Math.abs(sk.bounds.min[0]), Math.abs(sk.bounds.max[0]))
   var bz = Math.max(Math.abs(sk.bounds.min[2]), Math.abs(sk.bounds.max[2]))
   var reach = Math.max(bx, bz)
+  // The skeleton's bounds are the wood only. Foliage stands proud of the twig
+  // it grows on, a pine pad is wider than it is round, and a weeping clump
+  // trails strands well below itself, so the cylinder has to hold all of that
+  // too or a clump at the edge of the crown is cut off at some turns.
+  var wideK = sk.leaf === "needle" ? 1.40 : 1.20
+  var hang = sk.weeping ? 3.0 : 1.0
+  var clumpLow = 1e9
+  for (var ci = 0; ci < sk.clumps.length; ci++) {
+    var cc0 = sk.clumps[ci], cr0 = cc0.r * wideK + WOBBLE_AMP / art + 1
+    reach = Math.max(reach, Math.sqrt(cc0.c[0] * cc0.c[0] + cc0.c[2] * cc0.c[2]) + cr0)
+    clumpLow = Math.min(clumpLow, cc0.c[1] - cc0.r * hang)
+  }
   var potR = potRadius(sk)
   // the pot no longer sits on the trunk axis, so its own offset counts toward reach
   reach = Math.max(reach, Math.max(Math.abs(potCX(sk)), Math.abs(potCZ(sk))) + potR * 1.42) + 3
@@ -148,15 +160,20 @@ function measureStable(sk, V0) {
   }
   var cp = Math.cos(pitch)
   var topY = (sk.bounds.max[1] + padTop) * cp
-  var botY = Math.min(sk.bounds.min[1], potBottomY(sk) - SAUCER_DROP) * cp
-  var w = Math.ceil(reach * 2 * art) + 4
-  var h = Math.ceil((topY - botY) * art) + 6
-  // nudge the trunk off-centre toward the lighter side so a leaning canopy
-  // still sits balanced over the pot
+  var botY = Math.min(sk.bounds.min[1], clumpLow, potBottomY(sk) - SAUCER_DROP) * cp
+  // a little perspective: the near side of the cylinder projects slightly larger
+  var persp = FOCAL / (FOCAL - reach)
+  var half = reach * art * persp
+  // Nudge the trunk off-centre toward the lighter side so a leaning canopy
+  // still sits balanced over the pot. The frame grows by the nudge rather than
+  // the nudge eating into the cylinder: a nudged frame of the old width cut the
+  // crown off on the far side whenever the tree turned that way.
   var cxModel = (sk.bounds.min[0] + sk.bounds.max[0]) / 2
-  var originX = w / 2 - 0.45 * cxModel * art
-  originX = Math.max(w * 0.28, Math.min(w * 0.72, originX))
-  return { w: w, h: h, originX: originX, originY: 3 + topY * art }
+  var shift = clamp(0.45 * cxModel * art, -half * 0.5, half * 0.5)
+  var w = Math.ceil(2 * (half + Math.abs(shift))) + 4
+  var h = Math.ceil((topY - botY) * art * persp) + 6
+  var originX = w / 2 - shift
+  return { w: w, h: h, originX: originX, originY: 3 + topY * art * persp }
 }
 
 // Where the box sits, in x/z. Grow slides it under the crown for leaning and
@@ -351,6 +368,101 @@ function shade(col, lum, night, gold) {
   return [clamp(r, 0, 1) * 255, clamp(g, 0, 1) * 255, clamp(b, 0, 1) * 255]
 }
 
+
+// ---- what the foliage looks like: genus, graft colour, and the season ------
+// Each genus wears its own leaf, not one shared green clump: pine in flat,
+// dark, layered pads; juniper in spiky flame-shaped tufts; maple in lobed,
+// bright, coarse-leaved masses; zelkova in a fine, smooth dome; willow as tufts
+// with strands hanging from them. The base of a graft (the rootstock) decides
+// the leaf; a weeping donor still hangs its strands (sk.weeping).
+var LEAF_DIMS = { needle: [1.35, 0.60], scale: [0.92, 1.08], fan: [1.18, 0.92],
+                  fine: [1.10, 0.86], weeping: [0.85, 0.62] }
+// hue shift, saturation and value multipliers, relative to the theme's green
+var LEAF_TONE = { needle: [0.035, 1.08, 0.80], scale: [0.045, 0.85, 0.82],
+                  fan: [-0.045, 1.02, 1.10], fine: [-0.010, 0.95, 0.98],
+                  weeping: [-0.020, 0.95, 1.06] }
+// where each deciduous genus ends up at the full autumn turn: [h, s, v]
+var AUTUMN = { maple: [0.025, 0.80, 0.86], "crimson-maple": [0.975, 0.78, 0.70],
+               zelkova: [0.075, 0.72, 0.80], plum: [0.055, 0.62, 0.78],
+               willow: [0.14, 0.62, 0.86] }
+
+var LEAF_CODE = { needle: 1, scale: 2, fan: 3, fine: 4 }
+// fix a foliage op's leaf code and edge bound once, at build time
+function blobShape(op) {
+  op.lk = LEAF_CODE[op.leaf] || 0
+  // a small phase for the outline: sin() of the raw salt (a 32-bit seed) takes
+  // the slow large-argument path on every single pixel
+  op.ph = ((op.salt >>> 0) % 6283) / 1000
+  op.emax = 1 + Math.abs(op.wobf[0]) + Math.abs(op.wobf[1]) + Math.abs(op.wobf[2])
+    + (op.lk === 2 ? 0.12 : op.lk === 3 ? 0.08 : 0)
+  return op
+}
+
+function leafKindOf(sk) { return LEAF_DIMS[sk.leaf] ? sk.leaf : (sk.needle ? "needle" : "fan") }
+function evergreenLeaf(kind) { return kind === "needle" || kind === "scale" }
+
+// The tree-wide foliage colour and habit for this day of the year. season is
+// TreeGen.seasonOf(doy); absent (an old host) means high summer, which is
+// exactly what every tree looked like before seasons.
+function foliageLook(sk, pal, season) {
+  var kind = leafKindOf(sk)
+  var base = String(sk.genus || "").split("+")[0]
+  var se = season || { turn: 0, cover: 1, fresh: 0, bloom: 0, dormant: 0 }
+  var f = _hsv(pal.frond)
+  var tone = LEAF_TONE[kind]
+  var h = (f.h + tone[0] + 1) % 1, s = clamp(f.s * tone[1], 0, 1), v = clamp(f.v * tone[2], 0, 1)
+  // a graft-only genus that breaks the green anchor (crimson maple, zelkova)
+  if (sk.hue !== undefined && sk.hue !== null && isFinite(sk.hue)) {
+    h = ((sk.hue % 1) + 1) % 1; s = Math.max(s, 0.62)
+  }
+  var deciduous = !evergreenLeaf(kind)
+  var fresh = se.fresh * (deciduous ? 1 : 0.5)
+  // spring: soft, light, a little yellow
+  h = _mixHue(h, 0.21, 0.40 * fresh); v = clamp(v * (1 + 0.12 * fresh), 0, 1); s *= 1 - 0.12 * fresh
+  // winter on an evergreen: juniper bronzes, pine just dulls
+  if (!deciduous) {
+    if (kind === "scale") { h = _mixHue(h, 0.07, 0.30 * se.dormant); s *= 1 - 0.10 * se.dormant }
+    v *= 1 - 0.08 * se.dormant
+  }
+  var fall = deciduous ? (AUTUMN[base] || AUTUMN.maple) : null
+  // winter: a deciduous crown keeps its autumn colour, gone a little dusky
+  if (deciduous) { s *= 1 - 0.22 * se.dormant; v *= 1 - 0.10 * se.dormant }
+  return {
+    kind: kind, deciduous: deciduous,
+    h: h, s: s, v: v,
+    fall: fall, turn: deciduous ? se.turn : 0,
+    cover: deciduous ? se.cover : 1,
+    bloom: sk.blossom ? se.bloom : 0,
+    dormant: se.dormant,
+    snow: se.snow || 0,
+    leafOut: se.doy !== undefined && se.doy < 200,
+    blossomHsv: sk.blossom && pal.blossom ? _hsv(pal.blossom) : null,
+    winter: deciduous ? se.dormant : 0
+  }
+}
+
+// One clump's share of that: whether it is on the tree today, how full, and
+// its own colour (some clumps turn early and some hang on, as on a real tree).
+function clumpLeaf(look, c, salt) {
+  var n1 = noise(c, 41, salt), n2 = noise(c, 43, salt)
+  var show = look.cover >= 0.999 || n2 < look.cover * 1.05
+  var h = look.h, s = look.s, v = look.v
+  if (look.fall && look.turn > 0) {
+    // Autumn turns each clump gradually; spring replaces it outright, clump by
+    // clump: new leaves come in green, they do not fade back through orange.
+    var t = look.leafOut ? (n1 < look.turn ? 1 : 0) : clamp(look.turn * 1.6 - n1 * 0.6, 0, 1)
+    h = _mixHue(h, look.fall[0], t)
+    s = lerp(s, look.fall[1] * (1 - 0.22 * look.winter), t)
+    v = lerp(v, look.fall[2] * (1 - 0.10 * look.winter), t)
+  }
+  // in flower: a blooming clump is a cloud of blossom more than it is leaf
+  if (look.blossomHsv && look.bloom > 0 && noise(c, 47, salt) < 0.75 * look.bloom) {
+    var bk = 0.75 * look.bloom
+    h = _mixHue(h, look.blossomHsv.h, bk); s = lerp(s, look.blossomHsv.s, bk); v = lerp(v, look.blossomHsv.v, bk)
+  }
+  return { show: show, scale: 0.6 + 0.4 * look.cover, col: _fromHsv(h, s, v), n: n1 }
+}
+
 // ---------------------------------------------------------------------------
 // build the draw lists
 // V: { yaw, art, w, h, originX, originY, sun, lamp, palette, time }
@@ -520,6 +632,7 @@ function build(sk, V) {
     base: soilBase, lx: lx, ly: ly,
     ambient: night ? 0.62 : 0.72, intensity: night ? 0.6 : sun.intensity,
     dryness: soilDryness, night: night, gold: gold, salt: salt,
+    snow: V.season && V.season.snow > 0 ? V.season.snow : 0,
     clip: [[CP[0].x, CP[0].y], [CP[1].x, CP[1].y],
            [CP[2].x, CP[2].y], [CP[3].x, CP[3].y]]
   }
@@ -629,23 +742,13 @@ function build(sk, V) {
   if (berryIdx[1] === fruitIdx || berryIdx[1] === berryIdx[0])
     berryIdx[1] = (berryIdx[1] + 2) % clumpN
 
-  // A blossom genus (TreeGen.js GENUS.plum, currently — graft-only) scatters
-  // a handful of blossom blobs across the canopy, same slot-picking idea as
-  // fruit/berries but spread over more clumps since a flowering tree reads
-  // as numerous small blooms, not one or two big ones.
-  var takenIdx = {}
-  takenIdx[fruitIdx] = 1
-  for (var _bi = 0; _bi < berryIdx.length; _bi++) takenIdx[berryIdx[_bi]] = 1
-  function pickFreeIdx(offset) {
-    var idx = ((sk.seed >>> 0) + offset) % clumpN
-    var guard = 0
-    while (takenIdx[idx] && guard < clumpN) { idx = (idx + 1) % clumpN; guard++ }
-    takenIdx[idx] = 1
-    return idx
-  }
-  var blossomCount = sk.blossom ? Math.min(5, clumpN) : 0
-  var blossomIdx = []
-  for (var _fi = 0; _fi < blossomCount; _fi++) blossomIdx.push(pickFreeIdx(401 + _fi * 97))
+  // Today's foliage: the genus's own leaf and tone, any graft colour, and the
+  // season (V.season = TreeGen.seasonOf(doy)). A deciduous crown turns, thins
+  // and goes bare; a clump that is off the tree for the winter still keeps its
+  // hit area, because winter is exactly when a deciduous tree is shaped.
+  var look = foliageLook(sk, pal, V.season)
+  var dims = LEAF_DIMS[look.kind]
+  var shownClumps = []
 
   var clumpDraw = []
   for (var c = 0; c < sk.clumps.length; c++) {
@@ -654,16 +757,18 @@ function build(sk, V) {
     var wob = V.time !== undefined && !cl.seedling
       ? Math.sin(V.time * WOBBLE_RATE + cl.phase) * WOBBLE_AMP
       : 0
-    var rpx = cl.r * V.art * P.s
-    var fillCol = cl.seedling && cl.c[1] < 0 ? pal.trunk : pal.frond
-    // A weeping clump reads as a small tuft, not a round mass — the hanging
-    // strands below (see the weeping block further down) carry the actual
-    // silhouette, the same way a needle clump is squashed for pine/juniper.
+    var rpx0 = cl.r * V.art * P.s
+    var lf = cl.seedling ? null : clumpLeaf(look, c, salt)
+    var shown = !lf || lf.show
+    var rpx = rpx0 * (lf ? lf.scale : 1)
+    var fillCol = cl.seedling ? (cl.c[1] < 0 ? pal.trunk : pal.frond) : lf.col
+    var wk = look.kind === "fine" ? 0.5 : 1
     var op2 = {
       op: "blob",
       cx: P.x + wob, cy: P.y + wob * 0.4,
-      rx: rpx * (sk.weeping ? 0.85 : 1.15), ry: rpx * (sk.needle ? 0.78 : sk.weeping ? 0.62 : 0.92),
-      wobf: [noise(c, 1, salt) - 0.5, noise(c, 2, salt) - 0.5, noise(c, 3, salt) - 0.5],
+      rx: rpx * (cl.seedling ? 1.15 : dims[0]), ry: rpx * (cl.seedling ? 0.92 : dims[1]),
+      wobf: [(noise(c, 1, salt) - 0.5) * wk, (noise(c, 2, salt) - 0.5) * wk, (noise(c, 3, salt) - 0.5) * wk],
+      leaf: cl.seedling ? "" : look.kind,
       base: fillCol, night: night, gold: gold, ambient: ambient,
       lx: lx, ly: ly, intensity: night ? 0.5 : sun.intensity,
       salt: salt + c * 97, seedling: !!cl.seedling,
@@ -676,7 +781,7 @@ function build(sk, V) {
     // These are separate elongated blobs stepping straight down from the
     // clump's own position, shrinking as they fall, with a small per-strand
     // horizontal drift so the curtain doesn't read as a rigid stack.
-    if (sk.weeping && !cl.seedling) {
+    if (shown && sk.weeping && !cl.seedling) {
       var strandN = 3
       for (var wi = 1; wi <= strandN; wi++) {
         var shrink = 1 - wi * 0.22
@@ -688,6 +793,7 @@ function build(sk, V) {
           op: "blob", cx: sx, cy: sy,
           rx: strandR * 0.6, ry: strandR * 1.6,
           wobf: [noise(c, 20 + wi, salt) - 0.5, noise(c, 21 + wi, salt) - 0.5, noise(c, 22 + wi, salt) - 0.5],
+          leaf: "weeping",
           base: fillCol, night: night, gold: gold, ambient: ambient,
           lx: lx, ly: ly, intensity: night ? 0.5 : sun.intensity,
           salt: salt + c * 97 + wi * 13, seedling: false,
@@ -699,11 +805,12 @@ function build(sk, V) {
     // every foliage blob — pushing them straight to leafOps here would paint
     // them BEFORE all of clumpDraw's sorted blobs land at the end of this
     // function, so every leaf clump would draw over them unconditionally.
+    // They hang on through the winter, on bare wood if need be.
     if (sk.fruit && c === ((sk.seed >>> 0) % Math.max(1, sk.clumps.length))) {
       var fruitZ = P.z + 0.2
       clumpDraw.push({ z: fruitZ, op: {
-        op: "blob", mat: "fruit", cx: P.x + rpx * 0.58, cy: P.y + rpx * 0.32,
-        rx: Math.max(2.5, rpx * 0.22), ry: Math.max(2.5, rpx * 0.22),
+        op: "blob", mat: "fruit", cx: P.x + rpx0 * 0.58, cy: P.y + rpx0 * 0.32,
+        rx: Math.max(2.5, rpx0 * 0.22), ry: Math.max(2.5, rpx0 * 0.22),
         wobf: [0.02, -0.03, 0.01], base: pal.fruit,
         night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
         intensity: night ? 0.55 : sun.intensity, salt: salt + 201,
@@ -715,33 +822,51 @@ function build(sk, V) {
       var berryZ = P.z + 0.2
       clumpDraw.push({ z: berryZ, op: {
         op: "blob", mat: "berry",
-        cx: P.x + rpx * (bi === 0 ? -0.55 : 0.15),
-        cy: P.y + rpx * (bi === 0 ? 0.30 : -0.45),
-        rx: Math.max(1.8, rpx * 0.15), ry: Math.max(1.8, rpx * 0.15),
+        cx: P.x + rpx0 * (bi === 0 ? -0.55 : 0.15),
+        cy: P.y + rpx0 * (bi === 0 ? 0.30 : -0.45),
+        rx: Math.max(1.8, rpx0 * 0.15), ry: Math.max(1.8, rpx0 * 0.15),
         wobf: [-0.02, 0.03, -0.01], base: pal.berry,
         night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
         intensity: night ? 0.55 : sun.intensity, salt: salt + 311 + bi * 7,
         seedling: false, z: berryZ
       } })
     }
-    for (var fl = 0; fl < blossomCount; fl++) {
-      if (c !== blossomIdx[fl]) continue
-      var blossomZ = P.z + 0.2
-      var bAng = fl * (Math.PI * 2 / 5) + (sk.seed % 100) * 0.01
-      clumpDraw.push({ z: blossomZ, op: {
-        op: "blob", mat: "blossom",
-        cx: P.x + Math.cos(bAng) * rpx * 0.6, cy: P.y + Math.sin(bAng) * rpx * 0.5,
-        rx: Math.max(1.6, rpx * 0.13), ry: Math.max(1.6, rpx * 0.13),
-        wobf: [0.03, -0.02, 0.02], base: pal.blossom,
+    // A flowering genus flowers in early spring, and on the bare wood, before
+    // the leaves: most clumps carry a pair of blooms at the peak.
+    if (!cl.seedling && look.bloom > 0 && noise(c, 47, salt) < 0.75 * look.bloom) {
+      for (var fl = 0; fl < 2; fl++) {
+        var blossomZ = P.z + 0.2
+        var bAng = fl * 2.6 + noise(c, 48 + fl, salt) * 2.2
+        clumpDraw.push({ z: blossomZ, op: {
+          op: "blob", mat: "blossom",
+          cx: P.x + Math.cos(bAng) * rpx0 * 0.55, cy: P.y + Math.sin(bAng) * rpx0 * 0.45,
+          rx: Math.max(1.6, rpx0 * 0.14), ry: Math.max(1.6, rpx0 * 0.14),
+          wobf: [0.03, -0.02, 0.02], base: pal.blossom,
+          night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
+          intensity: night ? 0.55 : sun.intensity, salt: salt + 401 + c * 13 + fl,
+          seedling: false, z: blossomZ
+        } })
+      }
+    }
+    // Winter on a deciduous tree: where a clump has dropped, a resting bud on
+    // the twig says the tree is asleep, not gone.
+    if (!shown && look.deciduous && noise(c, 49, salt) < 0.6) {
+      var budZ = P.z + 0.1
+      clumpDraw.push({ z: budZ, op: {
+        op: "blob", mat: "bud", cx: P.x, cy: P.y,
+        rx: Math.max(1.2, rpx0 * 0.09), ry: Math.max(1.4, rpx0 * 0.11),
+        wobf: [0, 0, 0], base: pal.bud,
         night: night, gold: gold, ambient: ambient, lx: lx, ly: ly,
-        intensity: night ? 0.55 : sun.intensity, salt: salt + 401 + fl * 13,
-        seedling: false, z: blossomZ
+        intensity: night ? 0.55 : sun.intensity, salt: salt + 601 + c,
+        seedling: false, z: budZ
       } })
     }
-    clumpDraw.push({ z: P.z, op: op2 })
-    if (!cl.seedling && rpx > 3)
-      hitAreas.push({ id: cl.id, x: op2.cx - op2.rx, y: op2.cy - op2.ry,
-        w: op2.rx * 2, h: op2.ry * 2 })
+    if (shown) { op2.snow = look.snow; clumpDraw.push({ z: P.z, op: blobShape(op2) }) }
+    if (!cl.seedling && rpx0 > 3) {
+      var hrx = rpx0 * dims[0], hry = rpx0 * dims[1]
+      hitAreas.push({ id: cl.id, x: op2.cx - hrx, y: op2.cy - hry, w: hrx * 2, h: hry * 2 })
+      if (shown) shownClumps.push({ cx: op2.cx, cy: op2.cy, rx: op2.rx, ry: op2.ry })
+    }
   }
   clumpDraw.sort(function (p, q) { return p.z - q.z })
   for (var d = 0; d < clumpDraw.length; d++) leafOps.push(clumpDraw[d].op)
@@ -772,7 +897,7 @@ function build(sk, V) {
     saucer: [[SP[0].x, SP[0].y], [SP[1].x, SP[1].y], [SP[2].x, SP[2].y], [SP[3].x, SP[3].y]],
     mound: { cx: soilMoundOp.cx, cy: soilMoundOp.cy, rx: soilMoundOp.rx, ry: soilMoundOp.ry, lift: moundLift },
     trunk: { x: tf.x, y: tf.y, r: footRadiusOf(sk) * V.art * tf.s },
-    clumps: hitAreas.map(function (h) { return { cx: h.x + h.w / 2, cy: h.y + h.h / 2, rx: h.w / 2, ry: h.h / 2 } })
+    clumps: shownClumps   // only foliage that is on the tree catches water
   }
 
   return { staticOps: staticOps, leafOps: leafOps, hitAreas: hitAreas,
@@ -1107,8 +1232,17 @@ function moundPixel(op, x, y) {
   else if (g > 0.84) lum += 0.12                    // grit fleck
   if (ny < -0.45) lum += 0.06                       // catch-light on the crown
   if (ny > 0.55) lum -= 0.16 * (ny - 0.55)          // the far lip dips into pot shade
+  // winter: drifts of snow on the soil, gathering as the season deepens
+  if (op.snow > 0 && noise(x >> 1, y >> 1, op.salt + 13) * 0.7 + noise(x, y, op.salt + 17) * 0.3 < 0.62 * op.snow)
+    return shade(SNOW, lum * 1.18 + 0.08, op.night, op.gold)
   return shade(op.base, lum, op.night, op.gold)
 }
+
+// Snow: a cold white, a touch blue, that the light and the night still shade.
+var SNOW = { r: 0.93, g: 0.96, b: 1.0 }
+
+// small bright things that sit on the foliage rather than being foliage
+var GEM = { fruit: 1, berry: 1, blossom: 1, bud: 1 }
 
 function blobPixel(op, x, y) {
   // Moss is a skin on the soil, so it takes the ground's depth rather than a
@@ -1118,13 +1252,26 @@ function blobPixel(op, x, y) {
   lastZ = op.cy0 !== undefined ? (y + 0.5 - op.cy0) * op.zk : op.z
   var nx = (x + 0.5 - op.cx) / op.rx
   var ny = (y + 0.5 - op.cy) / op.ry
+  // lk: the leaf as a number (0 plain, 1 needle, 2 scale, 3 fan, 4 fine), and
+  // emax: the furthest the edge can reach, both fixed when the op is built
+  // (blobShape) so the per-pixel path never compares strings
+  var lk = op.lk | 0
+  // a pine pad is domed on top and flat underneath
+  if (lk === 1 && ny > 0) ny *= 1.35
+  // Most pixels in a blob's box are outside the blob: reject them on the
+  // radius alone, before any trig. The edge can never pass this bound.
+  var rr0 = nx * nx + ny * ny
+  if (op.emax !== undefined && rr0 > op.emax) return null
   var ang = Math.atan2(ny, nx)
   var edge = 1
     + op.wobf[0] * Math.sin(2 * ang + 0.6)
     + op.wobf[1] * Math.sin(3 * ang + 1.7)
     + op.wobf[2] * Math.sin(5 * ang)
+  // juniper: a spiky, flame-like tuft; maple: a lobed, leafy outline
+  if (lk === 2) edge += 0.13 * Math.abs(Math.sin(7 * ang + op.ph)) + 0.05 * Math.sin(15 * ang) - 0.06
+  else if (lk === 3) edge += 0.15 * Math.abs(Math.sin(3.5 * ang + op.ph)) - 0.07
   if (edge < 0.72) edge = 0.72
-  var rr = nx * nx + ny * ny
+  var rr = rr0
   if (rr > edge) return null
 
   var base = op.base
@@ -1142,24 +1289,44 @@ function blobPixel(op, x, y) {
     lum *= 0.78
   } else if (op.mat === "water") {
     lum = 0.76 + 0.20 * clamp(ndotl, 0, 1)
-  } else if (op.mat === "fruit" || op.mat === "berry" || op.mat === "blossom") {
+  } else if (GEM[op.mat]) {
     lum = 0.82 + 0.28 * clamp(ndotl, 0, 1)
+  } else if (lk === 1) {
+    // light on the top of the pad, the underside in its own shade: that band
+    // is what makes stacked pine pads read as layers
+    lum += 0.08 * clamp(-ny, 0, 1) - 0.24 * clamp(ny, 0, 1)
   }
 
-  var dap = noise(x >> 1, y >> 1, op.salt) * 0.6 + noise(x, y, op.salt) * 0.4
+  // the leaf texture: coarse flecks for maple, horizontal needle streaks for
+  // pine, a fine even grain for juniper and zelkova
+  var dap = lk === 1 ? noise(x >> 2, y, op.salt) * 0.65 + noise(x, y, op.salt) * 0.35
+    : lk === 3 ? noise(x >> 2, y >> 2, op.salt) * 0.7 + noise(x, y, op.salt) * 0.3
+    : lk === 2 || lk === 4 ? noise(x, y, op.salt) * 0.8 + noise(x >> 1, y >> 1, op.salt) * 0.2
+    : noise(x >> 1, y >> 1, op.salt) * 0.6 + noise(x, y, op.salt) * 0.4
   if (op.mat === "moss") {
     if (dap < 0.18) lum -= 0.06
     else if (dap > 0.74) lum += 0.10
   } else if (op.mat === "water") {
     if (dap > 0.72) lum += 0.12
-  } else if ((op.mat === "fruit" || op.mat === "berry" || op.mat === "blossom") && dap > 0.62) {
+  } else if (GEM[op.mat] && dap > 0.62) {
     lum += 0.10
   } else if (dap < 0.22) lum -= 0.22             // inner leaf-gap shadow
   else if (dap > 0.74) lum += 0.16              // sun fleck
 
   var rim = rr > edge - 0.34
+  // Snow settles on the top of a clump, deeper the further into winter, with
+  // a ragged lower edge; the underside stays leaf.
+  if (op.snow > 0) {
+    var sl = -1.05 + 0.85 * op.snow + 0.24 * (noise(x >> 1, y, op.salt + 9) - 0.5)
+    if (ny < sl) {
+      var slum = 0.90 + 0.16 * clamp(-ny, 0, 1) + 0.10 * clamp(ndotl, 0, 1)
+      if (rim) slum -= 0.16
+      if (dap > 0.80) slum += 0.06
+      return shade(SNOW, slum, op.night, op.gold)
+    }
+  }
   if (rim) lum -= op.mat === "moss" ? 0.12
-    : (op.mat === "water" || op.mat === "fruit" || op.mat === "berry" || op.mat === "blossom" ? 0.05 : OUTLINE)
+    : (op.mat === "water" || GEM[op.mat] ? 0.05 : OUTLINE)
   if (op.night && rim && ndotl > 0.1) lum += 0.5    // moonlit edge
 
   var col = shade(base, lum, op.night, op.gold)
@@ -1204,5 +1371,65 @@ function sunForTime(hour, minute) {
     intensity: night ? 0.12 : Math.max(0.05, Math.pow(elevation, 0.8)),
     goldeness: night ? 0.15 : Math.abs(Math.cos(elevAngle)),
     night: night
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The plant's palette, tinted by the running theme. Plain {r,g,b} in 0..1 in,
+// plain {r,g,b} out — no Qt colour types — so the panel (Omatree.qml) and the
+// dev tools (dev/shot.js and friends) shade the same tree from one definition.
+// `accent` / `urgent` are the theme's accent + urgent colours; `lite` is a
+// light background.
+function _hsv(c) {
+  var mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b), d = mx - mn
+  var h = 0
+  if (d > 0) {
+    if (mx === c.r) h = ((c.g - c.b) / d) % 6
+    else if (mx === c.g) h = (c.b - c.r) / d + 2
+    else h = (c.r - c.g) / d + 4
+    h = ((h / 6) % 1 + 1) % 1
+  }
+  return { h: h, s: mx > 0 ? d / mx : 0, v: mx }
+}
+function _fromHsv(h, s, v) {
+  var i = Math.floor(h * 6), f = h * 6 - i
+  var p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
+  switch (((i % 6) + 6) % 6) {
+  case 0: return { r: v, g: t, b: p }
+  case 1: return { r: q, g: v, b: p }
+  case 2: return { r: p, g: v, b: t }
+  case 3: return { r: p, g: q, b: v }
+  case 4: return { r: t, g: p, b: v }
+  default: return { r: v, g: p, b: q }
+  }
+}
+function _mixHue(base, target, t) {
+  var d = target - base
+  if (d > 0.5) d -= 1; else if (d < -0.5) d += 1
+  return ((base + d * t) % 1 + 1) % 1
+}
+function paletteFor(accent, urgent, lite) {
+  var a = _hsv(accent), u = _hsv(urgent)
+  var grey = a.s < 0.14
+  var ah = grey ? 0.33 : a.h
+  var leafH = grey ? 0.32 : _mixHue(0.30, ah, 0.34)
+  var woodH = grey ? 0.07 : _mixHue(0.075, ah, 0.14)
+  return {
+    frond: _fromHsv(leafH, grey ? 0.14 : (lite ? 0.62 : 0.52), lite ? 0.54 : 0.80),
+    trunk: _fromHsv(woodH, grey ? 0.08 : 0.36, lite ? 0.46 : 0.56),
+    // Earthen terracotta, warm and distinct from the trunk/roots so it reads
+    // as a deliberate pot rather than a continuation of the wood mass. The
+    // theme is allowed to tint it only very slightly.
+    pot: { r: 0.71 + 0.10 * accent.r, g: 0.46 + 0.10 * accent.g, b: 0.33 + 0.10 * accent.b },
+    soil: _fromHsv(woodH, grey ? 0.10 : 0.24, lite ? 0.40 : 0.34),
+    fruit: _fromHsv(u.s < 0.12 ? leafH : u.h, 0.55, lite ? 0.72 : 0.9),
+    // Berries stay a fixed, cool indigo rather than following the theme's
+    // urgent hue the way fruit does — they need to read as a distinct kind
+    // of thing (food) wherever fruit happens to land on any given theme.
+    berry: _fromHsv(0.70, 0.55, lite ? 0.62 : 0.80),
+    // Blossom is a fixed pale pink and a winter bud a fixed russet, for the same
+    // reason: a flowering plum should look like one on any theme.
+    blossom: _fromHsv(0.93, 0.34, lite ? 0.90 : 0.96),
+    bud: _fromHsv(0.03, 0.62, lite ? 0.50 : 0.62)
   }
 }

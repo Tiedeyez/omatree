@@ -22,10 +22,10 @@ function loadLib (rel, exportList) {
   return m.exports
 }
 
-const TreeGen = loadLib('TreeGen.js', 'genesis,STYLES,GENUS_NAMES,GENUS,EXOTIC_GENUS_NAMES,exoticGenesis,exoticGenesisFromSeed,graftAliasSeed,fuse,exportGraft,importGraft')
+const TreeGen = loadLib('TreeGen.js', 'genesis,STYLES,GENUS_NAMES,GENUS,EXOTIC_GENUS_NAMES,exoticGenesis,exoticGenesisFromSeed,graftAliasSeed,fuse,exportGraft,importGraft,TRAIN_POOL,trainingFor,restyle,seasonOf,dayOfYear,isDeciduous,baseGenusOf,southernLocale')
 const Grow = loadLib('Grow.js', 'grow')
 const Paint = loadLib('Paint.js',
-  'build,veins,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime,lampDir')
+  'build,veins,measure,measureStable,polyPixel,blobPixel,moundPixel,strokePixel,bboxOf,grainGlyph,sunForTime,lampDir,paletteFor')
 const Fx = loadLib('Fx.js', 'create,water,light,feed,step,prims,alive,soilY,visibleDrops,WATER,LIGHT,FEED')
 
 function shaderFor (op) {

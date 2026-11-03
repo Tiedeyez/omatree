@@ -59,6 +59,7 @@ holds that state. Empty it (`{}`) or delete it to go back to normal.
 | `yaw` | radians — pin the turntable angle (omit → the persisted `yaw`) |
 | `clock` | `"HH:MM"` or hour — pins the sun / day-night (omit → wall clock) |
 | `water` `light` `soil` `upkeep` | 0..100 need levels (omit → live) |
+| `season` | `"early-spring"` `"spring"` `"summer"` `"autumn"` `"late-autumn"` `"winter"`, or a day of the year 0..364 (omit → the calendar) |
 
 Overrides only touch what's displayed; the persisted state file is left alone.
 `override.json` is gitignored.
@@ -85,13 +86,33 @@ In the live shell, `qs ipc -p /usr/share/omarchy/shell call tiedeyez.omatree.fx
 preview water` (or `light`, `ambient`) plays an effect in the open panel without
 watering anything.
 
+## 5. Seasons, styles and the README images
+
+`TreeGen.seasonOf(doy)` turns a day of the year into smooth 0..1 curves
+(`turn`, `cover`, `fresh`, `bloom`, `dormant`, `snow`, `dark`); Service
+computes the day, Paint draws from the curves, the care clock slows with
+`dormant`, and the light need follows `dark` (shorter days, faster need).
+
+```sh
+node dev/shot.js fall.png --seed 7 --genus maple --season autumn
+node dev/shot.js plum.png --seed 7 --genus plum --season early-spring
+node dev/shot.js c.png --seed 7 --style cascade          # any style, trained as a planting would be
+node dev/sweep.js --n 4000 --maturity 1 --train          # the pool new plantings roll from
+node dev/sweep.js --n 3000 --maturity 0.4 --style cascade
+node dev/gallery.js                                      # rebuild docs/*.png
+```
+
+A cascade is judged on its own bands in `sweep.js`: its fall must clear the pot
+wall (`clear`, in rims) and end down the pot's side (`drop`, in pot depths).
+
 ## State file
 
 `~/.local/state/omarchy/omatree-state.json` carries `origin` (""|"seed"|"cutting"),
 the one-time fruit lifecycle, and `seedAvailable` for a berry seed carried
 between pots on the same machine,
-`prune` (`{ clumpId: 0..1 }` — clump-id strings from Grow.js), and `yaw` (the
-turntable pose). Clear `origin` to get the planting chooser back.
+`prune` (`{ clumpId: 0..1 }` — clump-id strings from Grow.js), `yaw` (the
+turntable pose), and `trainStyle` (the style chosen at planting; empty for a
+tree planted before 1.4, which keeps its identity's style). Clear `origin` to get the planting chooser back.
 
 ## Panel controls
 

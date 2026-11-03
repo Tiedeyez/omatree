@@ -1,6 +1,8 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.Commons
+import qs.Commons as Commons
 import "TreeGen.js" as TreeGen
 
 // Headless tree brain. Loaded once at shell startup, independent of the bar
@@ -141,6 +143,9 @@ Item {
   // applied, always the base tree replayed through the whole lineage fresh.
   function _rebuildGenesis() {
     var g = TreeGen.genesis(machineIdLoaded, userName + "@" + hostName)
+    // the style it was trained into at planting (1.4+); "" = a tree planted
+    // before that, which keeps the style its identity always gave it
+    if (trainStyle !== "") g = TreeGen.restyle(g, trainStyle)
     baseGenus = g.genus
     for (var i = 0; i < graftLineage.length && i < maxGrafts; i++) {
       var donor = TreeGen.importGraft(graftLineage[i])
@@ -185,6 +190,11 @@ Item {
     var aliasSeed = TreeGen.graftAliasSeed(machineIdLoaded, userName + "@" + hostName, baseGenus)
     return TreeGen.exportGraft(baseGenus, aliasSeed, graftLineage, treeName)
   }
+
+  // The training style chosen when this tree was planted (TreeGen.trainingFor).
+  // Empty for a tree planted before styles were chosen at planting: that tree
+  // keeps the style its identity rolled, forever, exactly as it has it now.
+  property string trainStyle: ""
 
   // How it was started: "" = not chosen yet (bare soil + a seed), "seed" = misho
   // (slow, from nothing), "cutting" = a rooted snip with a head start.
@@ -256,6 +266,23 @@ Item {
 
   // --- runtime --------------------------------------------------------------
   property double nowMs: Date.now()
+
+  // ---- the season ----------------------------------------------------------
+  // The real calendar, turned half a year for a southern-hemisphere locale.
+  // dev/override.json may pin it: "season": "autumn" | "winter" | … or a day
+  // of the year (0..364). One number a day; everything else is a curve of it.
+  readonly property bool southern: TreeGen.southernLocale(Qt.locale().name)
+  readonly property int seasonDoy: {
+    var o = devOverride && devOverride.season
+    var named = { spring: 110, "early-spring": 72, summer: 200, autumn: 292, fall: 292,
+                  "late-autumn": 318, winter: 15 }
+    if (typeof o === "string" && named[o] !== undefined) return named[o]
+    if (typeof o === "number" && isFinite(o)) return ((Math.floor(o) % 365) + 365) % 365
+    return TreeGen.dayOfYear(nowMs, southern)
+  }
+  readonly property var season: TreeGen.seasonOf(seasonDoy)
+  readonly property bool deciduous: genesis ? TreeGen.isDeciduous(genesis.genus) : false
+  readonly property string seasonLabel: season.name
   property bool initialized: false
   property bool identityReady: false
   readonly property int maxStateBytes: 65536
@@ -321,9 +348,30 @@ Item {
     case "shaded": return "I am reaching for the light."
     case "hungry": return "My roots are hungry."
     case "wild": return "I have gone shaggy. Trim me?"
-    case "meh": return "I am alright. Growing quietly."
-    default: return "I am flourishing."
+    case "meh": return seasonalLine !== "" ? seasonalLine : "I am alright. Growing quietly."
+    default: return seasonalLine !== "" ? seasonalLine : "I am flourishing."
     }
+  }
+
+  // What the time of year sounds like, when nothing more pressing needs saying.
+  // Only once the tree is past the sapling stage, and only what is true of it:
+  // an evergreen does not talk about dropping its leaves.
+  readonly property string seasonalLine: {
+    if (!planted || effMaturity < 0.06) return ""
+    var se = season
+    if (genesis && genesis.blossom && se.bloom > 0.4) return "I am in flower."
+    if (se.snow > 0.4)
+      return light >= 30 ? "The days are short. I would like more light."
+        : "Snow on my branches. I am resting."
+    if (deciduous) {
+      if (se.cover < 0.98 && se.dormant > 0) return "I am letting a few leaves go."
+      if (se.turn > 0.35 && se.fresh < 0.2) return "I am turning for autumn."
+      if (se.fresh > 0.4) return "I am putting out new leaves."
+      return ""
+    }
+    if (se.dormant > 0.6) return "I am keeping my needles through the cold."
+    if (se.fresh > 0.4) return "I have new growth at my tips."
+    return ""
   }
 
   // The stage of life, for the age line.
@@ -542,6 +590,8 @@ Item {
         weather: devOverride && devOverride.weather ? devOverride.weather : localWeather,
         fruit: fruitVisible,
         berries: berries,
+        // the calendar (TreeGen.seasonOf): the canopy turns, thins and rests
+        season: season,
         devClock: devHour
       }
     : null
@@ -573,7 +623,13 @@ Item {
     // (rates are per active minute; ~480 active minutes ≈ a working day)
     //
     // Water — the daily ritual. Asks by the end of a day's use.
-    thirstLevel = Math.min(100, thirstLevel + 0.145)
+    // Winter rest slows everything a tree asks for: a dormant tree drinks
+    // less (a bare one much less), wants no feeding, and barely grows; spring
+    // pulls the other way. Growth is scaled so a whole year averages out to
+    // exactly the old pace — the couple of months to maturity still holds.
+    var rest = season.dormant
+    var thirstK = 1 - (deciduous ? 0.45 : 0.25) * rest
+    thirstLevel = Math.min(100, thirstLevel + 0.145 * thirstK)
     // Light — it is the SUN that answers this need, not the lever. By day
     // the blinds are open by default: the need not only stops climbing, it
     // drains slowly, so a dim room's stored debt clears over a day of real
@@ -581,11 +637,12 @@ Item {
     // the copy already gives the lamp: the dark half of the year, sunshine
     // on demand. Clicking the lamp at noon moves a number with no meaning.
     if (daylight)
-      lightLevel = Math.max(0, lightLevel - 0.11)
+      lightLevel = Math.max(0, lightLevel - 0.11 * (1 - 0.5 * season.dark))
     else
-      lightLevel = Math.min(100, lightLevel + 0.085)
+      // and in winter the dark asks more of the lamp
+      lightLevel = Math.min(100, lightLevel + 0.085 * (1 + 0.7 * season.dark))
     // Feeding — real tree are fed every few weeks in the growing season.
-    soilLevel = Math.min(100, soilLevel + 0.013)
+    soilLevel = Math.min(100, soilLevel + 0.013 * (1 - 0.7 * rest))
     // Form — pruning is seasonal work. It should be something you choose to
     // sit down and do, never something nagging at you.
     untidinessLevel = Math.min(100, untidinessLevel + 0.007)
@@ -603,6 +660,8 @@ Item {
     var g = 0.000008 + 0.000040 * care
     if (origin === "seed" && maturity < 0.14) g *= 0.45
     else if (origin === "cutting" && maturity < 0.4) g *= 1.4
+    // mean over the year of (1 - 0.6·dormant + 0.5·fresh) is 0.877, hence 1.14
+    g *= 1.14 * (1 - 0.6 * rest + 0.5 * season.fresh)
     maturity = Math.min(1, maturity + g)
 
     // Berries ripen on the same idea as growth — slow, and only earned —
@@ -695,7 +754,12 @@ Item {
     var d = new Date(nowMs)
     return d.getHours()
   }
-  readonly property bool daylight: hour >= 6 && hour < 20
+  // The days draw in for winter: sunrise moves later and sunset earlier, so
+  // the hours that drain the light need shrink and the dark that builds it
+  // grows. At the winter solstice the day runs roughly 07:40 to 16:50.
+  readonly property real dayStart: 6 + 1.6 * season.dark
+  readonly property real dayEnd: 20 - 3.2 * season.dark
+  readonly property bool daylight: hour >= dayStart && hour < dayEnd
 
   // The lamp in the panel is really just sunshine on demand: click it and the
   // light need drops a notch.
@@ -727,6 +791,7 @@ Item {
     berries = 0
     berryProgress = 0
     graftLineage = []
+    trainStyle = ""
     prune = ({})
     yaw = 0
     thirstLevel = 0; lightLevel = 0; soilLevel = 0; untidinessLevel = 0
@@ -747,6 +812,8 @@ Item {
     graftLineage = []
     if (berrySeed) seedAvailable = false
     plantedAtMs = Date.now()
+    trainStyle = TreeGen.trainingFor(
+      TreeGen.genesis(machineIdLoaded, userName + "@" + hostName).seed, plantedAtMs)
     lastSeenMs = plantedAtMs
     lastActiveMs = plantedAtMs
     wallAgeDays = 0
@@ -777,6 +844,7 @@ Item {
       careCount: careCount,
       form: form,
       origin: origin,
+      trainStyle: trainStyle,
       prune: prune,
       yaw: yaw,
       desktopEnabled: desktopEnabled === true,
@@ -848,7 +916,7 @@ Item {
   function writeGraftExport() {
     var file = exportGraftFile()
     if (!file) return ""
-    Quickshell.execDetached(["mkdir", "-p", graftOutboxDir])
+    Quickshell.execDetached(["/usr/bin/mkdir", "-p", graftOutboxDir])
     var safe = (treeName || "tree").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 30) || "tree"
     var path = graftOutboxDir + "/" + safe + "-" + baseGenus + "-" + Date.now() + ".omatree-graft.json"
     _graftOutPath = path
@@ -909,6 +977,8 @@ Item {
       careCount = Math.round(num(s.careCount))
       form = s.form === "tangled" ? "tangled" : "neat"
       origin = (s.origin === "seed" || s.origin === "cutting") ? s.origin : ""
+      trainStyle = typeof s.trainStyle === "string" && TreeGen.STYLES.indexOf(s.trainStyle) >= 0
+        ? s.trainStyle : ""
       // prune keys are now clump-id strings (Grow.js). Drop the old numeric
       // pad-index keys from the sprite renderer — pruning is cosmetic + rare.
       var pr = {}

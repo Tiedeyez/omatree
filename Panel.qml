@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Qt.labs.folderlistmodel
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // Omatree panel — a clean, quiet HUD. The living pixel tree sits in the panel
@@ -58,10 +59,10 @@ Panel {
   readonly property var barIdentity: hostWidget || root
 
   readonly property bool ready: !!treeService && treeService.initialized === true
-  readonly property color fg: Color.popups.text
-  readonly property color bg: Color.popups.background
-  readonly property color accent: Color.accent
-  readonly property color warn: Color.urgent
+  readonly property color fg: Commons.Color.popups.text
+  readonly property color bg: Commons.Color.popups.background
+  readonly property color accent: Commons.Color.accent
+  readonly property color warn: Commons.Color.urgent
   readonly property string uiFont: "monospace"
   readonly property real capSize: Style.font.caption !== undefined ? Style.font.caption : Style.font.bodySmall
   readonly property real rad: Style.cornerRadius > 0 ? Style.space(10) : 0
@@ -922,7 +923,8 @@ Panel {
           horizontalAlignment: Text.AlignHCenter
           text: root.planted
             ? (root.treeService.stageLabel + "   ·   " + root.treeService.genusLabel
-               + "   ·   " + root.ageLabel).toUpperCase()
+               + "   ·   " + root.ageLabel
+               + (root.treeService.seasonLabel ? "   ·   " + root.treeService.seasonLabel : "")).toUpperCase()
             : ""
           textFormat: Text.PlainText
           color: Qt.alpha(root.fg, 0.45)
