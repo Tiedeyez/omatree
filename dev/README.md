@@ -11,6 +11,25 @@ Quickshell has no working Canvas). `dev/preview.js` runs the same draw list
 through a software rasteriser to ANSI half-blocks, so the terminal and the panel
 can't drift.
 
+## 0. The care clock — `dev/sim.js`, `dev/test-life.js`
+
+Everything the tree lives by (need pacing, the day, care, growth, its voice)
+is `Life.js`, the same file the shell runs. These live a year of it in a
+second, minute by minute, for several kinds of user — a 9-to-5 desk, weekdays
+only, a night owl with and without the lamp, someone who never tends it, a
+weekly visitor — and only present minutes move the tree, as on the desk.
+
+```sh
+node dev/sim.js                                   # every schedule, planted today
+node dev/sim.js --start 2027-01-15 --origin seed  # a seed sown in midwinter
+node dev/sim.js --legacy                          # the pre-1.5 rules, for comparison
+node dev/test-life.js                             # the promises, as assertions
+```
+
+Change a rate in `Life.js` and run the tests: each one is a sentence about how
+the tree should feel to live with, so a failure is a decision to make on
+purpose.
+
 ## 1. Still frames as PNG — `dev/shot.js`
 
 ```sh

@@ -1,9 +1,11 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import qs.Commons as Commons
 import "TreeGen.js" as TreeGen
+import "Life.js" as Life
 
 // Headless tree brain. Loaded once at shell startup, independent of the bar
 // widget, so the tree keeps living (growing, aging, thirsty) with the panel
@@ -14,13 +16,16 @@ import "TreeGen.js" as TreeGen
 // (see TreeGen.js). Two users can never have the same tree; the same user
 // always keeps theirs.
 //
+// The rules it lives by — need pacing, the day, care, growth, its voice — are
+// pure functions in Life.js, shared with TreeBridge and the node test suite
+// (dev/test-life.js), so the numbers tested are the numbers that run here.
+//
 // Age counts two things, because the plant should age with the system AND
 // with you:
-//   - activeAge: minutes the shell has been awake (the machine being on)
+//   - activeAge: minutes you have been at the machine with it (an idle,
+//                locked or sleeping machine does not count)
 //   - wallAge:   real elapsed calendar time since planting, so it keeps
 //                ageing across days even when the box is off at night
-// Growth (maturity) moves with the slower, gentler of the two, flavoured by
-// how well the tree is cared for.
 Item {
   id: root
 
@@ -97,16 +102,18 @@ Item {
   property real wallAgeDays: 0
   property real activeAgeMinutes: 0
   property real maturity: 0        // 0..1 -> how grown the tree is
-  property real careAverage: 100   // rolling care quality
-  property int careCount: 0
-  property real careSum: 0
+  // How well kept it has been: a time-weighted 0..100 of how it actually felt,
+  // minute by minute (Life.minute). Replaces careSum/careCount (pre-1.5),
+  // which only sampled at care actions and so read a never-tended tree as
+  // perfectly kept.
+  property real careLevel: 100
   property string form: "neat"     // neat | tangled — from pruning upkeep
   property bool fruitFound: false
   property bool fruitHarvested: false
   property bool seedAvailable: false
 
   readonly property int fruitThresholdDays:
-    75 + (((genesis ? genesis.seed : 0) >>> 0) % 106)
+    Life.fruitThresholdDays(genesis ? genesis.seed : 0)
   readonly property bool fruitVisible:
     planted && fruitFound && !fruitHarvested
 
@@ -280,7 +287,10 @@ Item {
     if (typeof o === "number" && isFinite(o)) return ((Math.floor(o) % 365) + 365) % 365
     return TreeGen.dayOfYear(nowMs, southern)
   }
-  readonly property var season: TreeGen.seasonOf(seasonDoy)
+  // the calendar, then corrected for where you are: no snow on a warm day
+  // when the weather plugin has a reading (Life.localSeason)
+  readonly property var season: Life.localSeason(TreeGen.seasonOf(seasonDoy),
+    devOverride && devOverride.weather ? devOverride.weather : localWeather)
   readonly property bool deciduous: genesis ? TreeGen.isDeciduous(genesis.genus) : false
   readonly property string seasonLabel: season.name
   property bool initialized: false
@@ -314,77 +324,28 @@ Item {
   readonly property real worstNeed: Math.max(thirst, light, soil, untidiness)
   readonly property real wellbeing: Math.round(100 - worstNeed)
 
-  readonly property real currentCareAverage: careCount > 0 ? careSum / careCount : 100
+  readonly property real currentCareAverage: careLevel
   readonly property string formLabel: form === "tangled" ? "tangled" : "neat"
 
   // Effective maturity — the dev override (dev/override.json) wins so the whole
   // panel, not just the render, reflects the frozen life stage.
   readonly property real effMaturity: devMaturity >= 0 ? devMaturity : maturity
 
-  readonly property string mood: {
-    if (!initialized) return "waking"
-    if (!planted) return "unsown"
-    if (origin === "seed" && effMaturity < 0.02) return "germinating"
-    if (effMaturity < 0.06) return "sapling"
-    if (thirst >= 60) return "thirsty"
-    if (light >= 60) return "shaded"
-    if (soil >= 60) return "hungry"
-    if (untidiness >= 60) return "wild"
-    if (worstNeed >= 35) return "meh"
-    return "flourishing"
-  }
-
-  readonly property string moodLabel: {
-    switch (mood) {
-    // Everything the tree says, it says as itself. It is the only voice in
-    // here, and a companion that talks about itself in the third person is a
-    // specimen, not a companion.
-    case "waking": return "I am waking up…"
-    case "unsown": return "Bare soil. I am not planted yet."
-    case "germinating": return "I am underground still. Give me time."
-    case "sapling": return origin === "cutting"
-      ? "I am finding my feet." : "I am small, but I am here."
-    case "thirsty": return "My soil has gone dry."
-    case "shaded": return "I am reaching for the light."
-    case "hungry": return "My roots are hungry."
-    case "wild": return "I have gone shaggy. Trim me?"
-    case "meh": return seasonalLine !== "" ? seasonalLine : "I am alright. Growing quietly."
-    default: return seasonalLine !== "" ? seasonalLine : "I am flourishing."
-    }
-  }
-
+  readonly property string mood: Life.moodOf({
+    initialized: initialized, planted: planted, origin: origin, maturity: effMaturity,
+    thirst: thirst, light: light, soil: soil, untidy: untidiness
+  })
+  // Everything the tree says, it says as itself (Life.moodLine).
+  readonly property string moodLabel: Life.moodLine(mood, origin, seasonalLine)
   // What the time of year sounds like, when nothing more pressing needs saying.
-  // Only once the tree is past the sapling stage, and only what is true of it:
-  // an evergreen does not talk about dropping its leaves.
-  readonly property string seasonalLine: {
-    if (!planted || effMaturity < 0.06) return ""
-    var se = season
-    if (genesis && genesis.blossom && se.bloom > 0.4) return "I am in flower."
-    if (se.snow > 0.4)
-      return light >= 30 ? "The days are short. I would like more light."
-        : "Snow on my branches. I am resting."
-    if (deciduous) {
-      if (se.cover < 0.98 && se.dormant > 0) return "I am letting a few leaves go."
-      if (se.turn > 0.35 && se.fresh < 0.2) return "I am turning for autumn."
-      if (se.fresh > 0.4) return "I am putting out new leaves."
-      return ""
-    }
-    if (se.dormant > 0.6) return "I am keeping my needles through the cold."
-    if (se.fresh > 0.4) return "I have new growth at my tips."
-    return ""
-  }
+  readonly property string seasonalLine: Life.seasonalLine({
+    planted: planted, maturity: effMaturity, season: season,
+    blossom: !!(genesis && genesis.blossom), deciduous: deciduous, light: light
+  })
 
   // The stage of life, for the age line.
-  readonly property string stage: {
-    if (effMaturity >= 0.95) return "mature"
-    if (effMaturity >= 0.6)  return "adolescent"
-    if (effMaturity >= 0.25) return "young"
-    return "seedling"
-  }
-  readonly property string stageLabel: ({
-    seedling: "Seedling", young: "Young tree", adolescent: "Adolescent",
-    mature: "Mature tree"
-  })[stage] || "Seedling"
+  readonly property string stage: Life.stageOf(effMaturity)
+  readonly property string stageLabel: Life.STAGE_LABEL[stage] || "Seedling"
 
   // --- identity -------------------------------------------------------------
   // machine-id + hostname are the second half of the seed (user is the first).
@@ -442,16 +403,13 @@ Item {
   // Struck or sown on the same day as the pet hatched. Nothing is done with
   // this beyond one line, once, on the shared anniversary — and only if both
   // are still here to have it.
-  function _sameDay(aMs, bMs) {
-    if (!(aMs > 0) || !(bMs > 0)) return false
-    var a = new Date(aMs), b = new Date(bMs)
-    return a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-  }
+  // Twin: the same calendar DATE, year included (it used to match the month
+  // and day of any year). Birthday: the anniversary, month and day.
   readonly property bool companionTwin:
     !!root.companion && root.planted
-    && root._sameDay(root.plantedAtMs, root.companion.hatchedAtMs)
+    && Life.sameDate(root.plantedAtMs, root.companion.hatchedAtMs)
   readonly property bool companionBirthday:
-    root.companionTwin && root._sameDay(root.plantedAtMs, Date.now())
+    root.companionTwin && Life.sameDay(root.plantedAtMs, root.nowMs)
 
   FileView {
     id: machineIdFile
@@ -560,8 +518,7 @@ Item {
   // Combined age in years: mostly the machine's awake-time, with a slower nod to
   // real calendar time. Feeds Grow.js's asymptotic size creep (decades -> a big
   // old tree, centuries -> the cap).
-  readonly property real ageYears:
-    (activeAgeMinutes / (60 * 24 * 365)) * 0.6 + (wallAgeDays / 365) * 0.4
+  readonly property real ageYears: Life.ageYears(activeAgeMinutes, wallAgeDays)
 
   readonly property var treeSpec: genesis
     ? {
@@ -611,77 +568,44 @@ Item {
     checkFruit()
   }
 
+  // One minute of you being here (the heartbeat skips idle/locked minutes).
+  // All the rules are in Life.minute(); this only carries state in and out.
   function applyActiveMinute() {
     if (!planted) { lastActiveMs = nowMs; return }   // nothing sown yet
-
-    // Needs rise with active time. The pacing is deliberate: this is a calm
-    // object, not a pet that punishes you for a weekend away. It is tuned so
-    // that ONE unhurried visit a day is enough, and each need moves on roughly
-    // the rhythm real cultivation moves on — so the habit it builds is the
-    // habit a real tree would want.
-    //
-    // (rates are per active minute; ~480 active minutes ≈ a working day)
-    //
-    // Water — the daily ritual. Asks by the end of a day's use.
-    // Winter rest slows everything a tree asks for: a dormant tree drinks
-    // less (a bare one much less), wants no feeding, and barely grows; spring
-    // pulls the other way. Growth is scaled so a whole year averages out to
-    // exactly the old pace — the couple of months to maturity still holds.
-    var rest = season.dormant
-    var thirstK = 1 - (deciduous ? 0.45 : 0.25) * rest
-    thirstLevel = Math.min(100, thirstLevel + 0.145 * thirstK)
-    // Light — it is the SUN that answers this need, not the lever. By day
-    // the blinds are open by default: the need not only stops climbing, it
-    // drains slowly, so a dim room's stored debt clears over a day of real
-    // use. Only after dark does the slide begin — which is exactly the job
-    // the copy already gives the lamp: the dark half of the year, sunshine
-    // on demand. Clicking the lamp at noon moves a number with no meaning.
-    if (daylight)
-      lightLevel = Math.max(0, lightLevel - 0.11 * (1 - 0.5 * season.dark))
-    else
-      // and in winter the dark asks more of the lamp
-      lightLevel = Math.min(100, lightLevel + 0.085 * (1 + 0.7 * season.dark))
-    // Feeding — real tree are fed every few weeks in the growing season.
-    soilLevel = Math.min(100, soilLevel + 0.013 * (1 - 0.7 * rest))
-    // Form — pruning is seasonal work. It should be something you choose to
-    // sit down and do, never something nagging at you.
-    untidinessLevel = Math.min(100, untidinessLevel + 0.007)
-
+    var o = Life.minute({
+      thirst: thirstLevel, light: lightLevel, soil: soilLevel, untidy: untidinessLevel,
+      care: careLevel, maturity: maturity, berries: berries, berryProgress: berryProgress
+    }, {
+      season: season, deciduous: deciduous, daylight: daylight, origin: origin,
+      companionHunger: companionHunger
+    })
+    thirstLevel = o.thirst
+    lightLevel = o.light
+    soilLevel = o.soil
+    untidinessLevel = o.untidy
+    careLevel = o.care
+    maturity = o.maturity
+    berries = o.berries
+    berryProgress = o.berryProgress
     activeAgeMinutes += 1
-    // Growth rate depends on wellbeing: a looked-after tree grows; a parched
-    // one stalls. We want a young tree to mature over weeks of use, so the
-    // per-minute pull is tiny. Misho (from seed) dawdles until it has roots;
-    // a cutting is already established and races ahead early on.
-    // Growth is slow on purpose. A tree you can rush is not a tree — but a
-    // tree that never visibly changes is not a companion either, so a
-    // well-kept one crosses into a mature tree over a couple of months of
-    // daily use rather than a couple of weeks.
-    var care = currentCareAverage / 100
-    var g = 0.000008 + 0.000040 * care
-    if (origin === "seed" && maturity < 0.14) g *= 0.45
-    else if (origin === "cutting" && maturity < 0.4) g *= 1.4
-    // mean over the year of (1 - 0.6·dormant + 0.5·fresh) is 0.877, hence 1.14
-    g *= 1.14 * (1 - 0.6 * rest + 0.5 * season.fresh)
-    maturity = Math.min(1, maturity + g)
-
-    // Berries ripen on the same idea as growth — slow, and only earned —
-    // but gated on wellbeing rather than the rolling average, so a single
-    // bad stretch pauses it without erasing progress. A hungry companion
-    // pulls it faster, up to double: the tree noticing what it's for.
-    if (maturity > 0.30 && berries < maxBerries) {
-      var berryCare = Math.max(0, (wellbeing - 45) / 55)
-      var hungerPull = companionHunger >= 0 ? companionHunger / 100 : 0
-      berryProgress += 0.00028 * berryCare * (1 + hungerPull)
-      if (berryProgress >= 1) {
-        berryProgress = 0
-        berries += 1
-        flush()
-        notify("Omatree", treeName + " grew a berry.")
-      }
+    if (o.berryGrown) {
+      flush()
+      notify("Omatree", treeName + " grew a berry.")
     }
-
     lastActiveMs = nowMs
     checkFruit()
+  }
+
+  // The day's light reaches the tree on the wall clock — present or not, and
+  // across a suspend or a shell restart (Life.daylightMinutes, capped at three
+  // days). Called every heartbeat with the time since the last one.
+  property double lastSunMs: 0
+  function applySun() {
+    if (!planted) { lastSunMs = nowMs; return }
+    var from = lastSunMs > 0 ? lastSunMs : nowMs
+    var mins = Life.daylightMinutes(from, nowMs, season)
+    if (mins > 0) lightLevel = Life.sun(lightLevel, mins, season)
+    lastSunMs = nowMs
   }
 
   // Pick a ripe berry to hand to the companion. Returns false (and takes
@@ -719,13 +643,10 @@ Item {
     flush()
   }
 
+  // Care itself is measured continuously (careLevel); a care action only has
+  // to see whether it just made the tree well enough to fruit.
   function recordCare() {
-    careSum += wellbeing
-    careCount += 1
-    // Rolling average, reset once past a window so a bad week can heal.
-    if (careCount > 320) { careSum = wellbeing; careCount = 1 }
-    // Tangled trees let the wild run away; keep cared-for ones neat.
-    if (form === "tangled" && untidinessLevel <= 10 && careCount > 120) form = "neat"
+    if (form === "tangled" && untidinessLevel <= 10) form = "neat"
     checkFruit()
   }
 
@@ -749,28 +670,29 @@ Item {
   // --- moods that reflect real system state --------------------------------
   // Sunlight edges toward warm in the daytime and low at night, so the tree
   // visibly "sleeps" with the system clock. This is the one tie to the host.
-  readonly property int hour: {
-    if (devHour >= 0) return Math.floor(devHour)
-    var d = new Date(nowMs)
-    return d.getHours()
-  }
-  // The days draw in for winter: sunrise moves later and sunset earlier, so
-  // the hours that drain the light need shrink and the dark that builds it
-  // grows. At the winter solstice the day runs roughly 07:40 to 16:50.
-  readonly property real dayStart: 6 + 1.6 * season.dark
-  readonly property real dayEnd: 20 - 3.2 * season.dark
-  readonly property bool daylight: hour >= dayStart && hour < dayEnd
+  readonly property int hour: Math.floor(hourF)
+  // the time of day as a fraction, so the day turns on the minute
+  readonly property real hourF: devHour >= 0 ? devHour : Life.hourOf(nowMs)
+  // The days draw in for winter (Life.dayWindow): 06:00-20:00 at midsummer,
+  // about 07:36-16:48 at midwinter.
+  readonly property real dayStart: Life.dayWindow(season).start
+  readonly property real dayEnd: Life.dayWindow(season).end
+  readonly property bool daylight: Life.isDaylight(hourF, season)
 
-  // The lamp in the panel is really just sunshine on demand: click it and the
-  // light need drops a notch.
+  // One lever, two things: by day it opens the blinds wide, after dark it is
+  // the grow lamp. Its meaning changes at dusk and dawn, so it is put out
+  // there — blinds opened at noon must not become a lamp left on all night,
+  // and a lamp left on overnight goes off when the sun is up (a timer, the
+  // way growers run them).
   property bool lampOn: false
+  onDaylightChanged: if (lampOn) lampOn = false
   Timer {
     id: lampTimer
     interval: 1000
     repeat: true
     running: root.lampOn
     onTriggered: {
-      // 1% a second: 100s of lamp to fully clear sunlight need.
+      // 1% a second: 100 s of lamp clears the whole light need.
       root.lightLevel = Math.max(0, root.lightLevel - 1)
     }
   }
@@ -795,7 +717,7 @@ Item {
     prune = ({})
     yaw = 0
     thirstLevel = 0; lightLevel = 0; soilLevel = 0; untidinessLevel = 0
-    careSum = 0; careCount = 0
+    careLevel = 100
     _rebuildGenesis()
     flush()
   }
@@ -822,7 +744,8 @@ Item {
     form = "neat"
     prune = ({})
     thirstLevel = 0; lightLevel = 0; soilLevel = 0; untidinessLevel = 0
-    careSum = 0; careCount = 0
+    careLevel = 100
+    lastSunMs = plantedAtMs
     _rebuildGenesis()
     flush()
     notify("Omatree",
@@ -840,8 +763,8 @@ Item {
       wallAgeDays: wallAgeDays,
       activeAgeMinutes: activeAgeMinutes,
       maturity: maturity,
-      careSum: careSum,
-      careCount: careCount,
+      care: careLevel,
+      lastSunMs: lastSunMs,
       form: form,
       origin: origin,
       trainStyle: trainStyle,
@@ -973,8 +896,10 @@ Item {
       wallAgeDays = num(s.wallAgeDays)
       activeAgeMinutes = num(s.activeAgeMinutes)
       maturity = Math.max(0, Math.min(1, num(s.maturity)))
-      careSum = num(s.careSum)
-      careCount = Math.round(num(s.careCount))
+      // 1.5: time-weighted care; an older save carries its average over
+      careLevel = (s.care === 0 || s.care > 0) ? Life.clamp100(s.care)
+        : Life.careFromLegacy(num(s.careSum), Math.round(num(s.careCount)))
+      lastSunMs = num(s.lastSunMs)
       form = s.form === "tangled" ? "tangled" : "neat"
       origin = (s.origin === "seed" || s.origin === "cutting") ? s.origin : ""
       trainStyle = typeof s.trainStyle === "string" && TreeGen.STYLES.indexOf(s.trainStyle) >= 0
@@ -1051,6 +976,19 @@ Item {
     Quickshell.execDetached([exec, "--app-name", "omatree", "-u", "normal", title, body])
   }
 
+  // Presence: the host's idle service when there is one (it folds in the
+  // screensaver, the lock and "stay awake"), else a private idle monitor. With
+  // neither, every minute counts, as it always did.
+  readonly property var _idleSvc: shell && shell.firstPartyServiceFor
+    ? shell.firstPartyServiceFor("omarchy.idle") : null
+  IdleMonitor {
+    id: ownIdle
+    enabled: !root._idleSvc
+    timeout: 300
+    respectInhibitors: true
+  }
+  readonly property bool present: root._idleSvc ? root._idleSvc.idle !== true : !ownIdle.isIdle
+
   // -------------------------------------------------------------------------
   // Heartbeats. The minute tick runs the plant's life; the daily tick crosses
   // real calendar days so the tree keeps ageing "with you" overnight.
@@ -1062,7 +1000,12 @@ Item {
     repeat: true
     onTriggered: {
       root.nowMs = Date.now()
-      root.applyActiveMinute()
+      root.applySun()
+      // Only a minute you are actually here counts toward the tree's needs and
+      // growth. An always-on desktop left overnight used to run them 24 h a
+      // day, so the tree was parched and "reaching for the light" every
+      // morning no matter how it was kept.
+      if (root.present) root.applyActiveMinute()
       // save on the minute's own rhythm — every 5th heartbeat. Gating on
       // careCount % 5 was a live bug: careCount only moves when you tend the
       // tree, so the gate was permanently open for one careCount value and

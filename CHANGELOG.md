@@ -4,6 +4,58 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.5.0 — 2026-11-07
+
+A care-mechanics audit. Every rule the tree lives by now sits in one file,
+`Life.js`, and a year of living with it is simulated and tested under node
+(`dev/sim.js`, `dev/test-life.js`: 48 checks, every schedule planted in every
+season). What that found, and fixed:
+
+- **Only time you are actually here counts.** The tree's needs and growth were
+  meant to move per minute of use, but they ran every minute the shell was up,
+  idle, locked or not. On a desktop left on overnight the tree was parched and
+  "reaching for the light" every morning however well it was kept. Now an
+  idle, locked or sleeping machine advances nothing; Omatree asks the shell's
+  own idle service (or, without one, the Wayland idle protocol) whether you
+  are here, and learns nothing else.
+- **The sun shines whether you are there or not.** Daylight now clears the
+  light need on the real clock, including across a suspend or a restart (up
+  to three days). Someone who works nights no longer has a tree that never
+  sees the day; in the short days of winter the lamp still has its job.
+- **"Well kept" means how the tree actually felt.** Growth and fruit used an
+  average sampled only when you tended it, so a tree nobody ever touched
+  counted as perfectly kept and outgrew a cared-for one (in the simulation it
+  matured in 11 days against 84). Care is now a time-weighted average of the
+  tree's wellbeing over about three days of use. A minute counts fully while
+  nothing is urgent, so one visit a day, a little late, is still a well-kept
+  tree. A neglected tree still grows, about a sixth as fast, and never dies.
+  Your existing tree keeps its history: the old average carries over.
+- **Water asks at the end of the day, as promised.** It turned urgent after
+  6 h 54 min of use; now it does at 8 h.
+- **Blinds by day, lamp by night, never both.** Opening the blinds at noon
+  used to leave a grow lamp burning all night. The lever is now put out at
+  dusk and at dawn.
+- **The day turns on the minute.** Sunrise and sunset compared the whole hour,
+  so the day began up to 59 minutes late. The painted sun now rises and sets
+  on the same seasonal day as the care clock (the tree is no longer drawn in
+  sunshine while the panel says it is dark), and the winter sun rides lower
+  and warmer.
+- **Shoots follow the season.** The need to trim slows in the winter rest and
+  quickens in spring's flush; over a year the pace is unchanged.
+- **Snow only where it is cold.** When Omarchy's weather widget has a reading,
+  snow fades out between 0 and 6 °C and is gone above. With no reading the
+  calendar stands.
+- **The bar says what the panel says.** The bar mark kept its own copy of the
+  rules, with a fixed 06:00-20:00 day and different words. It now reads the
+  same `Life.js`.
+- **The companion's "twin"** is the same date, not the same day of any year.
+- **Panel.** The age line no longer runs off both edges; all four care bars
+  end at the same place; an urgent need is marked on its label and bar, not
+  only by a bar that has shrunk to a dot; the grafts row shows pips and an
+  "n of 3" and has a real button; the header no longer repeats "open blinds";
+  every line of text meets WCAG AAA contrast (7:1) on the panel; "SET ME OUT"
+  is now "SET ME ON THE DESKTOP".
+
 ## 1.4.0 — 2026-11-02
 
 - **The tree keeps the seasons.** It follows the real calendar, turned half a

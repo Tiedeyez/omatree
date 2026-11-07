@@ -1356,20 +1356,30 @@ function grainGlyph(x, y, salt) {
 // lamp that fell back to the sun vector would be lit dead horizontally.
 function lampDir() { return [0.15, -0.9, 0.4] }
 
-function sunForTime(hour, minute) {
+// `day` (optional) is the care clock's own day: { start, end } in fractional
+// hours from Life.dayWindow(season), plus `dark` (0 midsummer .. 1 midwinter).
+// With it, the sun the tree is painted under rises and sets exactly when the
+// care clock says the day begins and ends — the painted tree can no longer
+// stand in sunshine while the panel says it is dark and offers the lamp — and
+// a winter sun rides lower and warmer. Without it (dev shots, older callers)
+// the old fixed 05:30-19:30 day stands.
+function sunForTime(hour, minute, day) {
   var t = hour + minute / 60
-  var DAYSTART = 5.5, DAYEND = 19.5
+  var DAYSTART = day && day.start >= 0 ? day.start : 5.5
+  var DAYEND = day && day.end > DAYSTART ? day.end : 19.5
+  var dark = day && day.dark >= 0 ? clamp(day.dark, 0, 1) : 0
   var straight = clamp((t - DAYSTART) / (DAYEND - DAYSTART), 0, 1)
   var elevAngle = straight * PI
-  var elevation = Math.sin(elevAngle)
+  // noon height: high summer sun ~1, a low midwinter one ~0.55
+  var elevation = Math.sin(elevAngle) * (1 - 0.45 * dark)
   var azimuth = -0.9 + straight * 1.8
   var L = { x: Math.sin(azimuth) * 0.85 + 0.15, y: Math.max(0, elevation), z: -Math.cos(azimuth) * 0.85 }
   var ln = Math.sqrt(L.x * L.x + L.y * L.y + L.z * L.z) || 1
-  var night = t < DAYSTART || t > DAYEND
+  var night = t < DAYSTART || t >= DAYEND
   return {
     dir: [L.x / ln, L.y / ln, L.z / ln],
     intensity: night ? 0.12 : Math.max(0.05, Math.pow(elevation, 0.8)),
-    goldeness: night ? 0.15 : Math.abs(Math.cos(elevAngle)),
+    goldeness: night ? 0.15 : Math.max(Math.abs(Math.cos(elevAngle)), 0.3 * dark),
     night: night
   }
 }

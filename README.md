@@ -64,7 +64,8 @@ go, and holds the rest through the winter, dusky and still coloured, until new
 green leaves replace them clump by clump in spring. Pine and juniper keep
 their needles; a juniper bronzes a little in the cold. A flowering plum
 flowers in early spring. From December to March snow settles on the foliage
-and the soil.
+and the soil, if it is cold where you are: when Omarchy's weather widget has a
+reading, snow only lies at or near freezing.
 
 Winter is gentle on the tree but asks for light: the days draw in, the dark
 builds the light need faster, and the lamp is what it wants. Water and feed
@@ -73,9 +74,22 @@ year still averages out to the same pace. Nothing about winter harms it.
 
 ### Care pacing
 
-Growth is deliberately slow — roughly a couple of months of daily use from
-sprout to a mature tree. Water is asked for by the end of a day's use; light
-over days; feed over weeks; form only seasonally, and it never nags.
+Only time you are actually at the machine counts: an idle, locked or sleeping
+machine moves nothing on. A one-visit-a-day habit is all it asks. Water is
+asked for at the end of an eight-hour day; feed every couple of weeks; a trim
+every few weeks in the growing season and hardly at all in winter. Daylight
+clears the light need on the real clock, present or not; the hours you keep
+it company after dark build it, which is what the lamp is for.
+
+A cutting grows into a mature tree in four to eight weeks of daily use, a seed
+in six to thirteen; planted in midwinter, either waits for spring. How well it
+has been kept is how it actually felt over the last few days, not a score of
+how often you clicked. A neglected tree grows slowly and complains, but never
+dies.
+
+All of this is one file, `Life.js`. `node dev/sim.js` lives a year of it in a
+second for several kinds of user, and `node dev/test-life.js` holds it to its
+promises.
 
 ## Grafting
 

@@ -7,6 +7,7 @@ import qs.Ui
 import "TreeGen.js" as TreeGen
 import "Grow.js" as Grow
 import "Paint.js" as Paint
+import "Life.js" as Life
 import "Raster.js" as Raster
 import "Fx.js" as Fx
 
@@ -121,7 +122,10 @@ Item {
     var h, mi
     if (dc >= 0) { h = Math.floor(dc); mi = Math.round((dc - h) * 60) }
     else { var d = new Date(); h = d.getHours(); mi = d.getMinutes() }
-    root.sun = Paint.sunForTime(h, mi)
+    // the care clock's own day, so the painted sun and the panel agree on dusk
+    var se = root.tree && root.tree.season ? root.tree.season : null
+    var w = se ? Life.dayWindow(se) : null
+    root.sun = Paint.sunForTime(h, mi, w ? { start: w.start, end: w.end, dark: se.dark } : null)
   }
   Timer {
     interval: 60000; repeat: true; running: true

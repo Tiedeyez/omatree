@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "TreeGen.js" as TreeGen
+import "Life.js" as Life
 
 // TreeBridge — a state-file adapter for the omatree *bar mark* and *panel*.
 //
@@ -13,8 +14,8 @@ import "TreeGen.js" as TreeGen
 // plugin's own persisted state file, so the mark and the glass-house render
 // the real tree instead of the "waking" placeholder.
 //
-// Reads are derived with the exact same rules as Service.qml (worst needle,
-// mood ladder, daylight, maturity bands, age years) and the tree spec is
+// Reads are derived from the same Life.js rules Service.qml runs (worst need,
+// mood ladder and voice, daylight, maturity bands, age years) and the tree spec is
 // rebuilt deterministically from machine id + user@host + graft lineage —
 // the identical seeds the service replays — so the canvas shows the same tree.
 // Write methods deliberately no-op: on a hardened bar there is no live service
@@ -45,8 +46,7 @@ Item {
   property int wallAgeDays: 0
   property real activeAgeMinutes: 0
   property real maturity: 0
-  property real careSum: 0
-  property int careCount: 0
+  property real careLevel: 100
   property string form: "neat"
   property bool fruitFound: false
   property bool fruitHarvested: false
@@ -86,62 +86,34 @@ Item {
   readonly property real untidiness: clip100(untidinessLevel)
   readonly property real worstNeed: Math.max(thirst, light, soil, untidiness)
   readonly property real wellbeing: Math.round(100 - worstNeed)
-  readonly property real currentCareAverage: careCount > 0 ? careSum / careCount : 100
+  readonly property real currentCareAverage: careLevel
   readonly property string formLabel: form === "tangled" ? "tangled" : "neat"
   readonly property real effMaturity: maturity
   readonly property bool planted: origin === "seed" || origin === "cutting"
 
-  readonly property int hour: { var d = new Date(nowMs); return d.getHours() }
-  readonly property bool daylight: hour >= 6 && hour < 20
+  readonly property real hourF: Life.hourOf(nowMs)
+  readonly property int hour: Math.floor(hourF)
+  readonly property bool daylight: Life.isDaylight(hourF, season)
 
-  readonly property real ageYears:
-    (activeAgeMinutes / (60 * 24 * 365)) * 0.6 + (wallAgeDays / 365) * 0.4
+  readonly property real ageYears: Life.ageYears(activeAgeMinutes, wallAgeDays)
 
-  readonly property int fruitThresholdDays:
-    75 + (((genesis ? genesis.seed : 0) >>> 0) % 106)
+  readonly property int fruitThresholdDays: Life.fruitThresholdDays(genesis ? genesis.seed : 0)
   readonly property bool fruitVisible: planted && fruitFound && !fruitHarvested
   readonly property int grafts: graftLineage.length
   readonly property bool graftsAvailable: planted && grafts < maxGrafts
 
-  readonly property string stage: {
-    if (effMaturity >= 0.95) return "mature"
-    if (effMaturity >= 0.6)  return "adolescent"
-    if (effMaturity >= 0.25) return "young"
-    return "seedling"
-  }
-  readonly property string stageLabel: ({
-    seedling: "Seedling", young: "Young tree", adolescent: "Adolescent",
-    mature: "Mature tree"
-  })[stage] || "Seedling"
-
-  readonly property string mood: {
-    if (!initialized) return "waking"
-    if (!planted) return "unsown"
-    if (origin === "seed" && effMaturity < 0.02) return "germinating"
-    if (effMaturity < 0.06) return "sapling"
-    if (thirst >= 60) return "thirsty"
-    if (light >= 60) return "shaded"
-    if (soil >= 60) return "hungry"
-    if (untidiness >= 60) return "wild"
-    if (worstNeed >= 35) return "meh"
-    return "flourishing"
-  }
-
-  readonly property string moodLabel: {
-    switch (mood) {
-    case "waking": return "I am waking up…"
-    case "unsown": return "Bare soil. I am not planted yet."
-    case "germinating": return "I am underground still. Give me time."
-    case "sapling": return origin === "cutting"
-      ? "I am finding my feet." : "I am small, but I am here."
-    case "thirsty": return "My soil has gone dry."
-    case "shaded": return "I need light."
-    case "hungry": return "I am hungry."
-    case "wild": return "I need trimming."
-    case "meh": return "I could use a little care."
-    default: return "I am thriving."
-    }
-  }
+  readonly property string stage: Life.stageOf(effMaturity)
+  readonly property string stageLabel: Life.STAGE_LABEL[stage] || "Seedling"
+  readonly property bool deciduous: genesis ? TreeGen.isDeciduous(genesis.genus) : false
+  readonly property string mood: Life.moodOf({
+    initialized: initialized, planted: planted, origin: origin, maturity: effMaturity,
+    thirst: thirst, light: light, soil: soil, untidy: untidiness
+  })
+  readonly property string seasonalLine: Life.seasonalLine({
+    planted: planted, maturity: effMaturity, season: season,
+    blossom: !!(genesis && genesis.blossom), deciduous: deciduous, light: light
+  })
+  readonly property string moodLabel: Life.moodLine(mood, origin, seasonalLine)
 
   // --- second companion: the Codex squad is service-owned, unreachable ------
   readonly property bool codexHere: false
@@ -245,8 +217,8 @@ Item {
       wallAgeDays = num(s.wallAgeDays)
       activeAgeMinutes = num(s.activeAgeMinutes)
       maturity = Math.max(0, Math.min(1, num(s.maturity)))
-      careSum = num(s.careSum)
-      careCount = Math.round(num(s.careCount))
+      careLevel = (s.care === 0 || s.care > 0) ? Life.clamp100(s.care)
+        : Life.careFromLegacy(num(s.careSum), Math.round(num(s.careCount)))
       form = s.form === "tangled" ? "tangled" : "neat"
       origin = (s.origin === "seed" || s.origin === "cutting") ? s.origin : ""
       trainStyle = typeof s.trainStyle === "string" && TreeGen.STYLES.indexOf(s.trainStyle) >= 0

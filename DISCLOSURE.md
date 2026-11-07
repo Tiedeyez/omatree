@@ -70,13 +70,21 @@ belong to other plugins**, which deserves an explanation rather than a footnote:
 
 | Path | Why |
 |---|---|
-| `~/.local/state/omarchy/settings/weather-current.json` | the weather where you are affects how the tree grows. Written by Omarchy's weather widget; Omatree only reads it |
+| `~/.local/state/omarchy/settings/weather-current.json` | the weather where you are affects how the tree grows, and whether it is cold enough for snow to lie. Written by Omarchy's weather widget; Omatree only reads it |
 | `~/.local/state/omarchy/omagotchi-state.json` | so the tree knows whether an Omagotchi companion is present and whether it is asleep — a sleeping pet means the tree keeps still and does not sparkle |
 | `~/.config/omarchy/shell.json` | only to see whether the Omarchy Pets widget (`raiden-meixelysia.omarchy-pets`) is in your bar and which pet you picked, so that pet can stand on the pot |
 | `~/.codex/pets/<id>/pet.json` and its sprite sheet | every installed Omarchy Pets pet's own metadata + image (bounded to 8 entries — the squad), to draw its members on the pot and saucer and name them in the panel. Read-only; never modified |
 
 All read-only, all other plugins' own files on your disk, and all ignored if
-absent. Omatree reads no documents, no browser data, no shell history, and
+absent.
+
+**Whether you are at the machine.** The tree's needs only move while you are
+here, so Omatree asks the shell's own idle service (`omarchy.idle`: the
+screensaver, lock and "stay awake" state) whether the session is idle. On a
+host without that service it uses Quickshell's `IdleMonitor` (the Wayland
+idle-notify protocol, 5-minute timeout, honouring idle inhibitors). Either way
+it learns one yes/no — idle or not — and nothing about what you are doing: no
+keys, no pointer, no windows. Omatree reads no documents, no browser data, no shell history, and
 nothing outside the paths listed here.
 
 ## What other programs it runs

@@ -66,6 +66,22 @@ Panel {
   readonly property string uiFont: "monospace"
   readonly property real capSize: Style.font.caption !== undefined ? Style.font.caption : Style.font.bodySmall
   readonly property real rad: Style.cornerRadius > 0 ? Style.space(10) : 0
+  // Text-on-panel inks, chosen against WCAG AAA (7:1). Accent text is pulled
+  // toward the foreground so it clears 7:1 on themes whose accent alone does
+  // not (Slowed and Throwed: accent 6.2:1 -> ink 8.5:1). Quiet text never goes
+  // below fg@0.65 (7.25:1 on the same theme); 0.4-0.5 measured 3.4-4.7:1.
+  readonly property color accentInk: Qt.tint(root.accent, Qt.alpha(root.fg, 0.3))
+  readonly property color quietInk: Qt.alpha(root.fg, 0.68)
+  // One action column for every row, sized to the widest label any row can
+  // show, so all meter tracks end at the same x whatever the light says.
+  readonly property real pillW: Math.max(Style.space(60), pillMetrics.advanceWidth + Style.space(18))
+  TextMetrics {
+    id: pillMetrics
+    font.family: root.uiFont
+    font.pixelSize: root.capSize
+    font.letterSpacing: 1
+    text: "▸ close blinds"
+  }
 
   readonly property real worst: root.ready ? root.treeService.worstNeed : 0
   readonly property bool planted: root.ready && root.treeService.planted
@@ -269,9 +285,6 @@ Panel {
   readonly property string lightWord: root.byDaylight
     ? (root.lightOn ? "close blinds" : "open blinds")
     : "lamp"
-  readonly property string lightCaps: root.byDaylight
-    ? (root.lightOn ? "CLOSE BLINDS" : "OPEN BLINDS")
-    : "LAMP"
 
   readonly property var needs: [
     { label: "water", action: "water" },
@@ -367,7 +380,7 @@ Panel {
   function squadLine() {
     var members = root.treeService ? (root.treeService.codexSquad || []) : []
     if (members.length === 0) return ""
-    var at = root.treeService.desktopEnabled ? "sits on the pot" : "keeps here in the bar"
+    var at = root.treeService.desktopEnabled ? "sits on the pot" : "stays in the bar"
     var names = []
     for (var i = 0; i < members.length && names.length < members.length; i++) {
       var n = members[i] ? String(members[i].name || "") : ""
@@ -493,7 +506,7 @@ Panel {
                 visible: root.ready
                 text: root.ready ? root.treeService.genusLabel.toLowerCase() : ""
                 textFormat: Text.PlainText
-                color: Qt.alpha(root.fg, 0.4)
+                color: root.quietInk
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
                 font.letterSpacing: 1
@@ -566,15 +579,6 @@ Panel {
                     height: Math.round(parent.height * 0.34)
                     color: Qt.alpha(root.accent, 0.35)
                   }
-                }
-                Text {
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: root.lightCaps
-                  color: lampToggle.on ? root.accent : Qt.alpha(root.fg, 0.45)
-                  font.family: root.uiFont
-                  font.pixelSize: root.capSize
-                  font.letterSpacing: 1.5
-                  renderType: Text.QtRendering
                 }
               }
               MouseArea {
@@ -885,7 +889,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             opacity: (root.flash === "" && root.hoverHint !== "") ? 1 : 0
             text: root.hoverHint
-            color: Qt.alpha(root.fg, 0.6)
+            color: root.quietInk
             font.family: root.uiFont
             font.pixelSize: Style.font.bodySmall
             font.italic: true
@@ -922,12 +926,12 @@ Panel {
           visible: !settingsCol.open && root.planted && !root.pruning
           horizontalAlignment: Text.AlignHCenter
           text: root.planted
-            ? (root.treeService.stageLabel + "   ·   " + root.treeService.genusLabel
-               + "   ·   " + root.ageLabel
-               + (root.treeService.seasonLabel ? "   ·   " + root.treeService.seasonLabel : "")).toUpperCase()
+            ? (root.treeService.stageLabel + "  ·  " + root.ageLabel
+               + (root.treeService.seasonLabel ? "  ·  " + root.treeService.seasonLabel : "")).toUpperCase()
             : ""
           textFormat: Text.PlainText
-          color: Qt.alpha(root.fg, 0.45)
+          wrapMode: Text.Wrap
+          color: root.quietInk
           font.family: root.uiFont
           font.pixelSize: root.capSize
           font.letterSpacing: 1.5
@@ -967,7 +971,8 @@ Panel {
                 anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                 width: Style.space(50)
                 text: meterRow.modelData.label.toUpperCase()
-                color: Qt.alpha(root.fg, 0.78)
+                color: meterRow.urgent ? root.warn : Qt.alpha(root.fg, 0.78)
+                font.bold: meterRow.urgent
                 font.family: root.uiFont
                 font.pixelSize: Style.font.bodySmall
                 font.letterSpacing: 1.5
@@ -983,7 +988,8 @@ Panel {
                 }
                 height: Style.space(4)
                 radius: height / 2
-                color: Qt.alpha(root.fg, 0.12)
+                color: meterRow.urgent ? Qt.alpha(root.warn, 0.3) : Qt.alpha(root.fg, 0.12)
+                Behavior on color { ColorAnimation { duration: 320 } }
 
                 Rectangle {
                   id: meterFill
@@ -1026,7 +1032,7 @@ Panel {
                         id: harvestText
                         anchors.centerIn: parent
                         text: "▸ harvest"
-                        color: root.accent
+                        color: root.accentInk
                         font.family: root.uiFont
                         font.pixelSize: root.capSize
                         renderType: Text.QtRendering
@@ -1046,7 +1052,7 @@ Panel {
               Rectangle {
                 id: actionPill
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                width: Math.max(Style.space(60), pillText.implicitWidth + Style.space(18))
+                width: root.pillW
                 height: Style.space(20)
                 radius: root.rad > 0 ? height / 2 : 0
                 readonly property bool lit: pillHover.containsMouse || meterRow.kbOn
@@ -1061,7 +1067,7 @@ Panel {
                   anchors.centerIn: parent
                   text: "▸ " + ({ water: "water", lamp: root.lightWord,
                                   feed: "feed", prune: "trim" })[meterRow.modelData.action]
-                  color: Qt.alpha(root.accent, 0.92)
+                  color: root.accentInk
                   font.family: root.uiFont
                   font.pixelSize: root.capSize
                   font.letterSpacing: 1
@@ -1101,39 +1107,78 @@ Panel {
         // capped at 3 and walks through choosing a file.
         Item {
           width: parent.width
-          height: graftLabel.implicitHeight + Style.space(6)
+          height: Style.space(28)
           visible: !settingsCol.open && root.planted && !root.pruning && root.ready
 
           Text {
             id: graftLabel
-            anchors.left: parent.left
-            text: root.ready
-              ? "GRAFTS  ·  " + root.treeService.grafts + "/" + root.treeService.maxGrafts
-                + (root.treeService.grafts > 0 ? "   ·   " + root.treeService.genusLabel : "")
-              : ""
-            textFormat: Text.PlainText
-            color: Qt.alpha(root.fg, 0.55)
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            width: Style.space(50)
+            text: "GRAFTS"
+            color: Qt.alpha(root.fg, 0.78)
             font.family: root.uiFont
             font.pixelSize: Style.font.bodySmall
-            font.letterSpacing: 1.2
+            font.letterSpacing: 1.5
             renderType: Text.QtRendering
           }
 
-          Text {
-            id: graftLinkText
-            anchors.right: parent.right
+          // one pip per slot, taken slots filled — plus the count in words,
+          // so it never rests on colour alone
+          Row {
+            anchors {
+              left: graftLabel.right; leftMargin: Style.space(6)
+              verticalCenter: parent.verticalCenter
+            }
+            spacing: Style.space(5)
+            Repeater {
+              model: root.ready ? root.treeService.maxGrafts : 0
+              Rectangle {
+                required property int index
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(8); height: width
+                radius: root.rad > 0 ? width / 2 : 0
+                color: index < root.treeService.grafts ? root.accent : "transparent"
+                border.width: 1
+                border.color: Qt.alpha(root.accent, 0.6)
+              }
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              leftPadding: Style.space(3)
+              text: root.ready ? root.treeService.grafts + " of " + root.treeService.maxGrafts : ""
+              color: root.quietInk
+              font.family: root.uiFont
+              font.pixelSize: root.capSize
+              font.letterSpacing: 1
+              renderType: Text.QtRendering
+            }
+          }
+
+          Rectangle {
+            id: graftPill
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            width: root.pillW
+            height: Style.space(20)
+            radius: root.rad > 0 ? height / 2 : 0
             readonly property bool lit: graftLinkMa.containsMouse
               || (root.kbActive && root.kbFocus === "graft")
-            text: "▸ graft"
-            color: Qt.alpha(root.accent, lit ? 0.95 : 0.75)
-            font.family: root.uiFont
-            font.pixelSize: root.capSize
-            font.letterSpacing: 1
-            renderType: Text.QtRendering
+            color: lit ? Qt.alpha(root.accent, 0.16) : "transparent"
+            border.width: 1
+            border.color: Qt.alpha(root.accent, lit ? 0.55 : 0.28)
+            scale: graftLinkMa.pressed ? 0.93 : 1
+            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutSine } }
+            Text {
+              anchors.centerIn: parent
+              text: "▸ graft"
+              color: root.accentInk
+              font.family: root.uiFont
+              font.pixelSize: root.capSize
+              font.letterSpacing: 1
+              renderType: Text.QtRendering
+            }
             MouseArea {
               id: graftLinkMa
               anchors.fill: parent
-              anchors.margins: -Style.space(8)
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onContainsMouseChanged: if (containsMouse && root.kbActive) root.kbFocus = "graft"
@@ -1165,29 +1210,33 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            Creature {
+            Item {   // fixed slot: both companion lines share one left edge
               anchors.verticalCenter: parent.verticalCenter
-              unit: Style.space(3)
-              // The creature on the main line is the one its line is ABOUT:
-              // Omagotchi whenever it is here (this row names its mood), the
-              // Codex pet only when the squad is the sole companion.
-              petDir: root.petHere ? root.petDir : ""
-              form: root.petHere ? root.petForm : ""
-              anim: root.petHere ? root.petAnim : ""
-              mood: root.petHere ? root.petService.mood
-                : root.codexHere ? "settled" : "happy"
-              sheetUrl: !root.petHere && root.codexHere
-                ? (root.treeService.codexSheetUrl || "") : ""
-              tint: root.fg
-              accent: root.accent
-              phase: companionClock.t
+              width: Style.space(26); height: Style.space(26)
+              Creature {
+                anchors.centerIn: parent
+                unit: Style.space(3)
+                // The creature on the main line is the one its line is ABOUT:
+                // Omagotchi whenever it is here (this row names its mood), the
+                // Codex pet only when the squad is the sole companion.
+                petDir: root.petHere ? root.petDir : ""
+                form: root.petHere ? root.petForm : ""
+                anim: root.petHere ? root.petAnim : ""
+                mood: root.petHere ? root.petService.mood
+                  : root.codexHere ? "settled" : "happy"
+                sheetUrl: !root.petHere && root.codexHere
+                  ? (root.treeService.codexSheetUrl || "") : ""
+                tint: root.fg
+                accent: root.accent
+                phase: companionClock.t
+              }
             }
 
             Text {
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(52)
               text: root.petLine()
-              color: Qt.alpha(root.fg, 0.6)
+              color: root.quietInk
               font.family: root.uiFont
               font.pixelSize: Style.font.bodySmall
               font.italic: true
@@ -1204,23 +1253,27 @@ Panel {
             spacing: Style.space(10)
             visible: root.petHere && root.codexHere
 
-            Creature {
+            Item {   // fixed slot: both companion lines share one left edge
               anchors.verticalCenter: parent.verticalCenter
-              unit: Style.space(2.4)
-              sheetUrl: (root.treeService && root.treeService.codexSquad
-                && root.treeService.codexSquad.length > 0)
-                ? root.treeService.codexSquad[0].sheetUrl : ""
-              mood: "settled"
-              tint: root.fg
-              accent: root.accent
-              phase: companionClock.t
+              width: Style.space(26); height: Style.space(26)
+              Creature {
+                anchors.centerIn: parent
+                unit: Style.space(2.4)
+                sheetUrl: (root.treeService && root.treeService.codexSquad
+                  && root.treeService.codexSquad.length > 0)
+                  ? root.treeService.codexSquad[0].sheetUrl : ""
+                mood: "settled"
+                tint: root.fg
+                accent: root.accent
+                phase: companionClock.t
+              }
             }
 
             Text {
               anchors.verticalCenter: parent.verticalCenter
               width: parent.width - Style.space(52)
               text: root.squadLine()
-              color: Qt.alpha(root.fg, 0.6)
+              color: root.quietInk
               font.family: root.uiFont
               font.pixelSize: Style.font.bodySmall
               font.italic: true
@@ -1279,7 +1332,7 @@ Panel {
               Rectangle {
                 id: cPill
                 anchors { right: parent.right; verticalCenter: parent.verticalCenter }
-                width: Math.max(Style.space(60), cPillText.implicitWidth + Style.space(18))
+                width: root.pillW
                 height: Style.space(20)
                 radius: root.rad > 0 ? height / 2 : 0
                 readonly property string kbName: "pet" + petRow.modelData.act
@@ -1295,7 +1348,7 @@ Panel {
                   id: cPillText
                   anchors.centerIn: parent
                   text: "▸ " + petRow.modelData.pill
-                  color: Qt.alpha(root.accent, 0.92)
+                  color: root.accentInk
                   font.family: root.uiFont
                   font.pixelSize: root.capSize
                   font.letterSpacing: 1
@@ -1342,9 +1395,9 @@ Panel {
               spacing: Style.space(7)
               Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "SET ME OUT"
+                text: "SET ME ON THE DESKTOP"
                 color: (desktopToggle.on || desktopToggle.lit)
-                  ? root.accent : Qt.alpha(root.fg, 0.55)
+                  ? root.accentInk : root.quietInk
                 font.family: root.uiFont
                 font.pixelSize: root.capSize
                 font.letterSpacing: 1.5
@@ -1392,7 +1445,7 @@ Panel {
           visible: !root.pruning && root.ready
           text: settingsCol.open ? "‹ back" : "settings"
           color: (root.kbActive && root.kbFocus === "settings")
-            ? root.accent : Qt.alpha(root.fg, 0.5)
+            ? root.accentInk : root.quietInk
           font.family: root.uiFont
           font.pixelSize: root.capSize
           font.letterSpacing: 1.5
