@@ -51,6 +51,11 @@ reinstall.
   wallpaper as a standalone ornament with its own small controls. Hover it for
   `TAKE ME HOME` to bring it back to the bar.
 
+- **From a key or a script.** `omarchy-shell tiedeyez.omatree.care water`
+  waters it, `feed` feeds it, and `status` says how it is, in one line:
+  `Stedono, adolescent pine: I am flourishing. (water 98%, light 89%, feed 90%, form 72%)`.
+  Bind them to keys, or put `status` in your terminal greeting.
+
 Full keyboard navigation is available throughout the panel (`↑↓`/`jk` to move,
 `Enter`/`Space` to act, `w`/`f`/`p` shortcuts), grafting included.
 

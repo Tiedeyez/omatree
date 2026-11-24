@@ -32,7 +32,7 @@ Two consequences worth stating plainly:
 
 ## What it answers
 
-Two targets on the shell's own IPC socket (`qs ipc`), which any program running
+Three targets on the shell's own IPC socket (`qs ipc`), which any program running
 as your user can call — the same as every shell IPC target:
 
 - `tiedeyez.omatree` — `open`, `close`, `show`, `hide`, `toggle` the panel.
@@ -41,6 +41,12 @@ as your user can call — the same as every shell IPC target:
   action's **animation only**, in an open panel. Nothing is watered, lit or
   fed; no state is read or written. It exists to tune the effects against the
   live shell.
+- `tiedeyez.omatree.care` — `water` and `feed` do exactly what the panel's
+  water and feed pills do (and the bar mark's middle-click): clear that need
+  and save the tree's state file. `status` changes nothing. Each answers one
+  line: the tree's name, life stage, genus, what it is saying and its four care
+  levels. They take no arguments, and nothing else about the tree can be
+  changed from here (no planting, pruning, grafting or harvesting).
 
 ## What it writes
 

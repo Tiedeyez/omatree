@@ -618,6 +618,36 @@ Item {
     return true
   }
 
+  // --- care from the command line ---------------------------------------------
+  //   omarchy-shell tiedeyez.omatree.care water | feed | status
+  // The same waterNow() and feedNow() the panel's pills and the bar's
+  // middle-click call, so a key binding or a script can tend the tree; status
+  // answers one line about how it is. Nothing else is reachable from here.
+  ShellIpc {
+    target: "tiedeyez.omatree.care"
+    function water(): string {
+      if (!root.initialized || !root.planted) return root.statusLine()
+      root.waterNow()
+      root.flush()
+      return root.statusLine()
+    }
+    function feed(): string {
+      if (!root.initialized || !root.planted) return root.statusLine()
+      root.feedNow()
+      root.flush()
+      return root.statusLine()
+    }
+    function status(): string { return root.statusLine() }
+  }
+  function statusLine() {
+    if (!initialized) return "Omatree is still waking up."
+    if (!planted) return "Nothing is planted yet. Open the panel to plant your tree."
+    function pct(need) { return Math.round(100 - Math.max(0, Math.min(100, need))) + "%" }
+    return (treeName || "Your tree") + ", " + String(stageLabel).toLowerCase() + " " + genusLabel
+      + ": " + moodLabel + " (water " + pct(thirst) + ", light " + pct(light)
+      + ", feed " + pct(soil) + ", form " + pct(untidiness) + ")"
+  }
+
   // --- care -----------------------------------------------------------------
   function waterNow() {
     thirstLevel = 0

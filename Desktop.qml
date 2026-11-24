@@ -590,7 +590,7 @@ function _petSpotY(bh, h) {
       svc.waterNow(); tree.water()
       // the seated Codex pet hops its gratitude — its only reaction, since it
       // has no needs of its own to feed
-      if (svc.codexHere) root.petHopAnim.restart()
+      if (svc.codexHere) petHopAnim.restart()
     }
     // desktopPruning drives tree.pruneMode through its binding — assigning the
     // property here as well would break that binding and strand trim mode on.

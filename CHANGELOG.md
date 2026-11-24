@@ -4,6 +4,18 @@ Every release here is a real `git log` you can read yourself — nothing ships
 that isn't in the diff. `omarchy plugin update` shows you this diff before it
 asks you to confirm; this file is the same story in plain language.
 
+## 1.6.0 — 2026-11-23
+
+- **Tend it from a key or a script.** `omarchy-shell tiedeyez.omatree.care
+  water`, `feed` and `status`. Water and feed are the same calls the panel's
+  pills make; status answers one line with the tree's name, stage, genus, what
+  it is saying and its four care levels. Bind them in Hyprland, or greet
+  yourself with the tree in a new terminal.
+- **Fixed: watering from the desktop with a Codex pet seated.** The pet's
+  thank-you hop was called through the wrong name, so the click raised an
+  error in the shell's log and the hop never played. The tree was still
+  watered.
+
 ## 1.5.0 — 2026-11-07
 
 A care-mechanics audit. Every rule the tree lives by now sits in one file,
